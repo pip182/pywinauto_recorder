@@ -3,9 +3,8 @@
 import unittest
 import os
 import platform
-from core import *
-from player import *
-from recorder import Recorder
+from pywinauto_recorder.player import *
+from pywinauto_recorder.recorder import Recorder
 
 
 class TestEntryMethods(unittest.TestCase):
@@ -63,19 +62,19 @@ class TestEntryMethods(unittest.TestCase):
 		time.sleep(0.5)
 		send_keys("{LWIN}")
 		element_path = 'Taskbar||Pane->Start||Button%(0,0)'
-		entry_list = core.get_entry_list(element_path)
-		with Region('') as r:
-			element = r.find(element_path)
+		entry_list = get_entry_list(element_path)
+		with Region(''):
+			element = find(element_path)
 		result = same_entry_list(element, entry_list)
 		self.assertTrue(result)
 
 		element_path2 = 'Taskbar||Pane->Start2||Button%(0,0)'
-		entry_list2 = core.get_entry_list(element_path2)
+		entry_list2 = get_entry_list(element_path2)
 		result = same_entry_list(element, entry_list2)
 		self.assertFalse(result)
 
 		element_path3 = 'Taskbar||Pane->Start||Button2%(0,0)'
-		entry_list3 = core.get_entry_list(element_path3)
+		entry_list3 = get_entry_list(element_path3)
 		result = same_entry_list(element, entry_list3)
 		self.assertFalse(result)
 
@@ -88,14 +87,14 @@ class TestNotepad(unittest.TestCase):
 		time.sleep(0.5)
 		send_keys("{LWIN}Notepad{ENTER}")
 
-		with Region("Untitled - Notepad||Window") as r:
-			edit = r.left_click("Text Editor||Edit%(0,0)")
+		with Region("Untitled - Notepad||Window"):
+			edit = left_click("Text Editor||Edit%(0,0)")
 			send_keys("This is a error{BACKSPACE}{BACKSPACE}{BACKSPACE}{BACKSPACE}{BACKSPACE}test.{ENTER}")
 		result = edit.get_value()
 
-		with Region("*Untitled - Notepad||Window") as r:
-			r.left_click("||TitleBar->Close||Button%(0,0)")
-			r.left_click("Notepad||Window->Don't Save||Button%(0,0)")
+		with Region("*Untitled - Notepad||Window"):
+			left_click("||TitleBar->Close||Button%(0,0)")
+			left_click("Notepad||Window->Don't Save||Button%(0,0)")
 
 		self.assertEqual(result, 'This is a test.\r\n')
 
@@ -103,38 +102,38 @@ class TestNotepad(unittest.TestCase):
 		time.sleep(0.5)
 		send_keys("{LWIN}Notepad{ENTER}")
 
-		with Window("Untitled - Notepad||Window") as w:
-			w.menu_click("", "Format->Font...", menu_type='NPP')
+		with Window("Untitled - Notepad||Window"):
+			menu_click("", "Format->Font...", menu_type='NPP')
 
-		with Window("Untitled - Notepad||Window->Font||Window") as w:
-			size_list_box = w.find("Size:||ComboBox->Size:||List")
-			with Region("Size:||ComboBox->Size:||List") as r:
-				r.drag_and_drop("Vertical||ScrollBar->Position||Thumb", "Vertical||ScrollBar->Line down||Button")
-				r.left_click("Vertical||ScrollBar->Line down||Button%(-200,0)")
+		with Window("Untitled - Notepad||Window->Font||Window"):
+			size_list_box = find("Size:||ComboBox->Size:||List")
+			with Region("Size:||ComboBox->Size:||List"):
+				drag_and_drop("Vertical||ScrollBar->Position||Thumb", "Vertical||ScrollBar->Line down||Button")
+				left_click("Vertical||ScrollBar->Line down||Button%(-200,0)")
 			self.assertEqual(size_list_box.get_selection()[0].name, size_list_box.children_texts()[-1])
-			w.left_click("Cancel||Button")
+			left_click("Cancel||Button")
 
-		with Window("Untitled - Notepad||Window") as w:
-			w.left_click("||TitleBar->Close||Button")
+		with Window("Untitled - Notepad||Window"):
+			left_click("||TitleBar->Close||Button")
 
 	def test_wheel(self):
 		time.sleep(0.5)
 		send_keys("{LWIN}Notepad{ENTER}")
 
-		with Window("Untitled - Notepad||Window") as w:
-			w.menu_click("", "Format->Font...", menu_type='NPP')
+		with Window("Untitled - Notepad||Window"):
+			menu_click("", "Format->Font...", menu_type='NPP')
 
-		with Window("Untitled - Notepad||Window->Font||Window") as w:
-			size_list_box = w.find("Size:||ComboBox->Size:||List")
-			with Region("Size:||ComboBox->Size:||List") as r:
-				r.left_click("Vertical||ScrollBar->Position||Thumb")
+		with Window("Untitled - Notepad||Window->Font||Window"):
+			size_list_box = find("Size:||ComboBox->Size:||List")
+			with Region("Size:||ComboBox->Size:||List"):
+				left_click("Vertical||ScrollBar->Position||Thumb")
 				mouse_wheel(-10)
-				r.left_click("Vertical||ScrollBar->Line down||Button%(-200,0)")
+				left_click("Vertical||ScrollBar->Line down||Button%(-200,0)")
 			self.assertEqual(size_list_box.get_selection()[0].name, size_list_box.children_texts()[-1])
-			w.left_click("Cancel||Button")
+			left_click("Cancel||Button")
 
-		with Window("Untitled - Notepad||Window") as w:
-			w.left_click("||TitleBar->Close||Button")
+		with Window("Untitled - Notepad||Window"):
+			left_click("||TitleBar->Close||Button")
 
 
 @unittest.skipUnless(platform.system() == 'Windows' and platform.release() == '10', "requires Windows 10")
@@ -147,42 +146,42 @@ class TestCalculator(unittest.TestCase):
 		time.sleep(0.5)
 		send_keys("{LWIN}Calculator{ENTER}")
 
-		with Region("Calculator||Window->Calculator||Window->||Group->Number pad||Group") as r:
-			r.move("One||Button")
+		with Region("Calculator||Window->Calculator||Window->||Group->Number pad||Group"):
+			move("One||Button")
 			time.sleep(0.5)
-			r.left_click("One||Button")
-			r.move("Two||Button")
+			left_click("One||Button")
+			move("Two||Button")
 			time.sleep(0.5)
-			r.double_left_click("Two||Button")
-			r.move("Three||Button")
+			double_left_click("Two||Button")
+			move("Three||Button")
 			time.sleep(0.5)
-			r.triple_left_click("Three||Button")
-			r.move("Four||Button")
+			triple_left_click("Three||Button")
+			move("Four||Button")
 			time.sleep(0.5)
-			r.triple_left_click("Four||Button")
-			r.left_click("Four||Button")
-			r.move("Five||Button")
+			triple_left_click("Four||Button")
+			left_click("Four||Button")
+			move("Five||Button")
 			time.sleep(0.5)
-			r.triple_left_click("Five||Button")
-			r.double_left_click("Five||Button")
-			r.move("Six||Button")
+			triple_left_click("Five||Button")
+			double_left_click("Five||Button")
+			move("Six||Button")
 			time.sleep(0.5)
-			r.triple_left_click("Six||Button")
-			r.triple_left_click("Six||Button")
-			r.move("Three||Button")
+			triple_left_click("Six||Button")
+			triple_left_click("Six||Button")
+			move("Three||Button")
 			time.sleep(0.5)
-			r.triple_left_click("Three||Button")
-			r.move("Two||Button")
+			triple_left_click("Three||Button")
+			move("Two||Button")
 			time.sleep(0.5)
-			r.double_left_click("Two||Button")
-			r.move("One||Button")
+			double_left_click("Two||Button")
+			move("One||Button")
 			time.sleep(0.5)
-			r.left_click("One||Button")
+			left_click("One||Button")
 
-		with Region("Calculator||Window->Calculator||Window") as r:
-			r.move("Close Calculator||Button")
+		with Region("Calculator||Window->Calculator||Window"):
+			move("Close Calculator||Button")
 			time.sleep(0.5)
-			r.left_click("Close Calculator||Button")
+			left_click("Close Calculator||Button")
 
 		record_file_name = recorder.stop_recording()
 		recorder.quit()
