@@ -15,7 +15,7 @@ Description
 "Pywinauto recorder" records user interface actions and saves them in a Python script.
 The generated Python script plays back user interface actions in the order in which the user recorded them.
 
-"Pywinauto recorder" uses accessibility technologies via the Pywinauto_ library.
+"Pywinauto recorder" uses accessibility technologies (MS UI Automation) via the Pywinauto_ library.
 
 The functions of the generated Python script return Pywinauto wrappers so the script can be enhanced with Pywinauto
 functions.
