@@ -261,6 +261,10 @@ def _process_wheel_events(events, i):
 
 
 def _process_drag_and_drop_or_click_events(events, i):
+	# A click whose element or press wasn't recorded (e.g. no element identified yet) is left
+	# unprocessed; _write_in_file ignores raw mouse events.
+	element_event_before_button_up = None
+	move_event_end = None
 	i0 = i - 1
 	while i0 >= 0:
 		if isinstance(events[i0], ElementEvent):
@@ -272,9 +276,12 @@ def _process_drag_and_drop_or_click_events(events, i):
 			move_event_end = events[i0]
 			break
 		i0 = i0 - 1
+	if element_event_before_button_up is None or move_event_end is None:
+		return i
 	i0 = i - 1
 	drag_and_drop = False
 	click_count = 0
+	i1 = None
 	while i0 >= 0:
 		if isinstance(events[i0], mouse.MoveEvent):
 			if events[i0].x != move_event_end.x or events[i0].y != move_event_end.y:
@@ -285,12 +292,16 @@ def _process_drag_and_drop_or_click_events(events, i):
 				i1 = i0
 				break
 		i0 = i0 - 1
+	if i1 is None:
+		return i
 	element_event_before_button_down = None
 	while i0 >= 0:
 		if isinstance(events[i0], ElementEvent):
 			element_event_before_button_down = events[i0]
 			break
 		i0 = i0 - 1
+	if element_event_before_button_down is None:
+		return i
 	if drag_and_drop:
 		move_event_start = None
 		while i0 >= 0:
@@ -298,6 +309,8 @@ def _process_drag_and_drop_or_click_events(events, i):
 				move_event_start = events[i0]
 				break
 			i0 = i0 - 1
+		if move_event_start is None:
+			return i
 		dx1, dy1 = _compute_dx_dy(move_event_start.x, move_event_start.y, element_event_before_button_down.rectangle)
 		dx2, dy2 = _compute_dx_dy(move_event_end.x, move_event_end.y, element_event_before_button_up.rectangle)
 		events[i] = DragAndDropEvent(
@@ -685,10 +698,12 @@ class Recorder(Thread):
 
 	def __mouse_on(self, mouse_event):
 		if self.mode == "Record":
-			if isinstance(mouse_event, mouse.MoveEvent) and (len(self.event_list) > 0):
-				if isinstance(self.event_list[-1], mouse.MoveEvent):
-					self.event_list = self.event_list[:-1]
-			self.event_list.append(mouse_event)
+			# Replaced in place: copying the list on each move slows the hook down as the recording grows.
+			if isinstance(mouse_event, mouse.MoveEvent) and self.event_list and \
+					isinstance(self.event_list[-1], mouse.MoveEvent):
+				self.event_list[-1] = mouse_event
+			else:
+				self.event_list.append(mouse_event)
 			
 	def __start_stop_recording_by_key(self):
 		if self.mode != "Record":
