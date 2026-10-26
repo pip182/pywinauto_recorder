@@ -19,6 +19,7 @@ import win32gui
 import win32ui
 import pyperclip
 from pywinauto_recorder.recorder import Recorder, IconSet, _overlay_add_mode_icon, _overlay_add_progress_icon
+from pywinauto_recorder.player import _show_console_window
 from win32api import GetSystemMetrics, GetCursorPos
 import time
 
@@ -381,7 +382,7 @@ if __name__ == '__main__':
 		windll.user32.MessageBoxW(0, "Not plugging your laptop in the AC Power can dramatically slow down Pywinauto Recorder.",
 		                                 "AC line status is off!", win32con.MB_OK | win32con.MB_ICONEXCLAMATION)
 		
-	windll.user32.ShowWindow(windll.kernel32.GetConsoleWindow(), 6)
+	_show_console_window(6)
 	parser = argparse.ArgumentParser()
 	parser.add_argument(
 		"filename", metavar='path', help="replay a python script", type=str, action='store', nargs='?', default='')
