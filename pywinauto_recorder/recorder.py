@@ -685,10 +685,12 @@ class Recorder(Thread):
 
 	def __mouse_on(self, mouse_event):
 		if self.mode == "Record":
-			if isinstance(mouse_event, mouse.MoveEvent) and (len(self.event_list) > 0):
-				if isinstance(self.event_list[-1], mouse.MoveEvent):
-					self.event_list = self.event_list[:-1]
-			self.event_list.append(mouse_event)
+			# Replaced in place: copying the list on each move slows the hook down as the recording grows.
+			if isinstance(mouse_event, mouse.MoveEvent) and self.event_list and \
+					isinstance(self.event_list[-1], mouse.MoveEvent):
+				self.event_list[-1] = mouse_event
+			else:
+				self.event_list.append(mouse_event)
 			
 	def __start_stop_recording_by_key(self):
 		if self.mode != "Record":
