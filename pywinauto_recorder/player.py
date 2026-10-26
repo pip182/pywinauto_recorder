@@ -1036,6 +1036,22 @@ def select_file(
 		send_keys(filename + "{ENTER}")
 
 
+def _show_console_window(cmd_show):
+	"""
+	Calls ShowWindow on the console window of the current process.
+
+	When the console is hosted by Windows Terminal, GetConsoleWindow returns a hidden 'PseudoConsoleWindow'.
+	Showing it (even minimized) leaves an empty window stub on the desktop, so it is left untouched.
+
+	:param cmd_show: ShowWindow command (e.g. SW_MINIMIZE, SW_MAXIMIZE)
+	"""
+	from ctypes import windll
+	from win32gui import GetClassName as win32gui_GetClassName
+	h_console = windll.kernel32.GetConsoleWindow()
+	if h_console and win32gui_GetClassName(h_console) != 'PseudoConsoleWindow':
+		windll.user32.ShowWindow(h_console, cmd_show)
+
+
 def playback(str_code='', filename=''):
 	"""
 	This function plays back a string of code or a Python file.
@@ -1043,7 +1059,6 @@ def playback(str_code='', filename=''):
 	:param str_code: The Python code to be played back
 	:param filename: The name of the file corresponding to the Python code to be played back
 	"""
-	from ctypes import windll
 	import traceback
 	import os
 	import sys
@@ -1059,7 +1074,7 @@ def playback(str_code='', filename=''):
 		compiled_code = compile(str_code, filename, 'exec')
 		exec(compiled_code)
 	except Exception:
-		windll.user32.ShowWindow(windll.kernel32.GetConsoleWindow(), 3)
+		_show_console_window(3)
 		exc_type, exc_value, exc_traceback = sys.exc_info()
 		output = traceback.format_exception(exc_type, exc_value, exc_traceback)
 		i_line = d_line = 0
