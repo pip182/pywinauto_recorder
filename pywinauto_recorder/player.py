@@ -128,6 +128,12 @@ class ButtonLocation(Enum):
 	"""Right mouse button."""
 
 
+_POLL_DELAY_MIN = 0.1
+"""First delay (in seconds) between two searches of an element; it doubles after each failed search."""
+
+_POLL_DELAY_MAX = 2.0
+"""Maximum delay (in seconds) between two searches of an element."""
+
 _dictionary = {}
 unique_element_old = None
 element_path_old = ''
@@ -325,26 +331,22 @@ def _find(
 	_, _, y_x, _ = get_entry(get_entry_list(full_element_path)[-1])
 	elements = []
 	t0 = time.time()
-	while (time.time() - t0) < timeout:
-		while not elements:
-			if (time.time() - t0) > timeout:
-				msg = "No element found with the UIPath '" + full_element_path + "' after " + str(timeout) + " s of searching."
-				raise FailedSearch(msg)
-			try:
-				elements = find_elements(full_element_path)
-				if not elements:
-					print("🔴", end="", file=sys.stdout)
-					sys.stdout.flush()
-					time.sleep(2.0)
-			except Exception:
-				print("🟢", end="", file=sys.stdout)
+	poll_delay = _POLL_DELAY_MIN
+	while True:
+		try:
+			elements = find_elements(full_element_path)
+			if not elements:
+				print("🔴", end="", file=sys.stdout)
 				sys.stdout.flush()
-				pass
+		except Exception:
+			elements = []
+			print("🟢", end="", file=sys.stdout)
+			sys.stdout.flush()
 
 		if len(elements) == 1:
 			return elements[0]
-		
-		if y_x is not None:
+
+		if len(elements) > 1 and y_x is not None:
 			nb_y, _, candidates = get_sorted_region(elements)
 			if is_int(y_x[0]):
 				return candidates[int(y_x[0])][int(y_x[1])]
@@ -371,17 +373,23 @@ def _find(
 						if ref_r.top < y_candidate < ref_r.bottom:
 							return candidates[r_y][y_x[1]]
 					r_y = r_y + 1
-		time.sleep(0.1)
 
-	if len(elements) > 1:
-		message = "There are " + str(len(elements)) + " undiscriminated elements that match the path '" + full_element_path + "':"
-		for e in elements:
-			if isinstance(e, OCRWrapper):
-				message += "\n" + str(e.result)
-			else:
-				message += "\n" + get_wrapper_path(e)
-		raise FailedSearch(message)
-	raise FailedSearch("Unique element not found using path '", full_element_path + "'")
+		remaining_time = timeout - (time.time() - t0)
+		if remaining_time <= 0:
+			break
+		time.sleep(min(poll_delay, remaining_time))
+		poll_delay = min(poll_delay * 2, _POLL_DELAY_MAX)
+
+	if not elements:
+		msg = "No element found with the UIPath '" + full_element_path + "' after " + str(timeout) + " s of searching."
+		raise FailedSearch(msg)
+	message = "There are " + str(len(elements)) + " undiscriminated elements that match the path '" + full_element_path + "':"
+	for e in elements:
+		if isinstance(e, OCRWrapper):
+			message += "\n" + str(e.result)
+		else:
+			message += "\n" + get_wrapper_path(e)
+	raise FailedSearch(message)
 
 
 def find(
@@ -485,15 +493,16 @@ def find_all(
 	if y_x:
 		return find(element_path, timeout=timeout)
 	t0 = time.time()
+	poll_delay = _POLL_DELAY_MIN
 	while (time.time() - t0) < timeout:
 		try:
 			elements = find_elements(full_element_path)
 			if elements:
 				return elements
-			time.sleep(2.0)
 		except Exception:
 			pass
-		time.sleep(0.1)
+		time.sleep(max(0, min(poll_delay, timeout - (time.time() - t0))))
+		poll_delay = min(poll_delay * 2, _POLL_DELAY_MAX)
 	return []
 
 
@@ -686,13 +695,16 @@ def click(
 		return wrapper
 	elif wait_ready and \
 			(element_path is None or isinstance(element_path, str) or isinstance(element_path, pywinauto.base_wrapper.BaseWrapper)):
-				use_cache_old = PlayerSettings.use_cache
-				PlayerSettings.use_cache = False
-				# if isinstance(element_path, pywinauto.base_wrapper.BaseWrapper):
-				#	wrapper = element_path
 				wrapper = move(element_path, duration=duration, mode=mode, timeout=timeout)
-				wait_is_ready_try1(wrapper, timeout=timeout)
-				PlayerSettings.use_cache = use_cache_old
+				try:
+					wait_is_ready_try1(wrapper, timeout=timeout)
+				except TimeoutError:
+					raise
+				except Exception:
+					# The cached wrapper may refer to an element that no longer exists: search it again.
+					find_cache_clear()
+					wrapper = move(element_path, duration=duration, mode=mode, timeout=timeout)
+					wait_is_ready_try1(wrapper, timeout=timeout)
 	else:
 			wrapper = move(element_path, duration=duration, mode=mode, timeout=timeout)
 	_win32api_mouse_click(button, click_count)
@@ -1036,6 +1048,22 @@ def select_file(
 		send_keys(filename + "{ENTER}")
 
 
+def _show_console_window(cmd_show):
+	"""
+	Calls ShowWindow on the console window of the current process.
+
+	When the console is hosted by Windows Terminal, GetConsoleWindow returns a hidden 'PseudoConsoleWindow'.
+	Showing it (even minimized) leaves an empty window stub on the desktop, so it is left untouched.
+
+	:param cmd_show: ShowWindow command (e.g. SW_MINIMIZE, SW_MAXIMIZE)
+	"""
+	from ctypes import windll
+	from win32gui import GetClassName as win32gui_GetClassName
+	h_console = windll.kernel32.GetConsoleWindow()
+	if h_console and win32gui_GetClassName(h_console) != 'PseudoConsoleWindow':
+		windll.user32.ShowWindow(h_console, cmd_show)
+
+
 def playback(str_code='', filename=''):
 	"""
 	This function plays back a string of code or a Python file.
@@ -1043,7 +1071,6 @@ def playback(str_code='', filename=''):
 	:param str_code: The Python code to be played back
 	:param filename: The name of the file corresponding to the Python code to be played back
 	"""
-	from ctypes import windll
 	import traceback
 	import os
 	import sys
@@ -1059,7 +1086,7 @@ def playback(str_code='', filename=''):
 		compiled_code = compile(str_code, filename, 'exec')
 		exec(compiled_code)
 	except Exception:
-		windll.user32.ShowWindow(windll.kernel32.GetConsoleWindow(), 3)
+		_show_console_window(3)
 		exc_type, exc_value, exc_traceback = sys.exc_info()
 		output = traceback.format_exception(exc_type, exc_value, exc_traceback)
 		i_line = d_line = 0
