@@ -695,13 +695,16 @@ def click(
 		return wrapper
 	elif wait_ready and \
 			(element_path is None or isinstance(element_path, str) or isinstance(element_path, pywinauto.base_wrapper.BaseWrapper)):
-				use_cache_old = PlayerSettings.use_cache
-				PlayerSettings.use_cache = False
-				# if isinstance(element_path, pywinauto.base_wrapper.BaseWrapper):
-				#	wrapper = element_path
 				wrapper = move(element_path, duration=duration, mode=mode, timeout=timeout)
-				wait_is_ready_try1(wrapper, timeout=timeout)
-				PlayerSettings.use_cache = use_cache_old
+				try:
+					wait_is_ready_try1(wrapper, timeout=timeout)
+				except TimeoutError:
+					raise
+				except Exception:
+					# The cached wrapper may refer to an element that no longer exists: search it again.
+					find_cache_clear()
+					wrapper = move(element_path, duration=duration, mode=mode, timeout=timeout)
+					wait_is_ready_try1(wrapper, timeout=timeout)
 	else:
 			wrapper = move(element_path, duration=duration, mode=mode, timeout=timeout)
 	_win32api_mouse_click(button, click_count)
