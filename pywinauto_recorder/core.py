@@ -366,36 +366,36 @@ def find_ocr_elements(ocr_text, window, entry_list):
 	'''
 
 
-last_parent_element_info, last_parent_element_info_path = None, None
-
-
-def get_element_info_path(element_info, element_info_top_level_parent=None):
+def get_element_info_path(element_info, window, path_by_runtime_id):
 	"""
-	It takes an element_info object and returns a string that represents the path to the element from the root of
-	the UI Automation tree
+	It returns the path of the element from the window down to the element.
+	The paths of the visited ancestors are memoized in path_by_runtime_id, so that each ancestor shared by several
+	elements is read only once.
 
-	:param wrapper: The UIAutomation wrapper object
-	:return: The path of the wrapper from the top level parent to the wrapper.
+	:param element_info: The UIAElementInfo of the element
+	:param window: The UIAElementInfo of the window containing the element
+	:param path_by_runtime_id: The memoized paths, by UIA runtime id
+	:return: The path of the element, or '' if the element is not in the window.
 	"""
-	global last_parent_element_info, last_parent_element_info_path
-	first_parent = True
 	try:
-		path = ''
-		if element_info_top_level_parent is None:
-			element_info_top_level_parent = UIAWrapper(element_info).top_level_parent()
-		while element_info != element_info_top_level_parent:
-			path = path_separator + element_info.name + type_separator + element_info.control_type + path
+		chain = []
+		while True:
+			if element_info is None:
+				return ''
+			runtime_id = element_info.runtime_id
+			if runtime_id and runtime_id in path_by_runtime_id:
+				path = path_by_runtime_id[runtime_id]
+				break
+			if not runtime_id and element_info == window:
+				path = window.name + type_separator + window.control_type
+				break
+			chain.append((runtime_id, element_info))
 			element_info = element_info.parent
-			if first_parent:
-				if last_parent_element_info and last_parent_element_info.automation_id in [None, '']:
-					last_parent_element_info, last_parent_element_info_path = None, None
-				if element_info == last_parent_element_info:
-					return last_parent_element_info_path + path
-				last_parent_element_info = element_info
-				first_parent = False
-		last_parent_element_info_path = element_info.name + type_separator + element_info.control_type + path
-		last_parent_element_info_path = last_parent_element_info_path[:last_parent_element_info_path.rfind(path_separator)]
-		return element_info.name + type_separator + element_info.control_type + path
+		for runtime_id, ancestor in reversed(chain):
+			path = path + path_separator + ancestor.name + type_separator + ancestor.control_type
+			if runtime_id:
+				path_by_runtime_id[runtime_id] = path
+		return path
 	except Exception:
 		return ''
 
@@ -403,8 +403,11 @@ def get_element_info_path(element_info, element_info_top_level_parent=None):
 def filter_with_match_entry_list(window, descendants, entry_list):
 	result = []
 	ds = {}
+	path_by_runtime_id = {}
+	if window.runtime_id:
+		path_by_runtime_id[window.runtime_id] = window.name + type_separator + window.control_type
 	for d in descendants:
-		wp = get_element_info_path(d, window)
+		wp = get_element_info_path(d, window, path_by_runtime_id)
 		if wp not in ds:
 			ds[wp] = []
 		ds[wp].append(d)
