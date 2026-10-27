@@ -41,21 +41,6 @@ FindEvent = namedtuple('FindEvent', ['path', 'dx', 'dy', 'time'])
 MenuEvent = namedtuple('MenuEvent', ['path', 'menu_path'])
 
 
-class IconSet:
-	""" It loads the icons from the Icons folder and stores them in the class."""
-	if "__compiled__" in globals():
-		path_icons = os.path.dirname(os.path.realpath(__file__)) + r'\..'
-	else:
-		path_icons = os.path.dirname(os.path.realpath(__file__))
-	hicon_clipboard = oaam.load_ico(path_icons + r'\Icons\paste.ico', 48, 48)
-	hicon_light_on = oaam.load_ico(path_icons + r'\Icons\light-on.ico', 48, 48)
-	hicon_record = oaam.load_ico(path_icons + r'\Icons\record.ico', 48, 48)
-	hicon_play = oaam.load_ico(path_icons + r'\Icons\play.ico', 48, 48)
-	hicon_stop = oaam.load_ico(path_icons + r'\Icons\stop.ico', 48, 48)
-	hicon_search = oaam.load_ico(path_icons + r'\Icons\search.ico', 48, 48)
-	hicon_power = oaam.load_ico(path_icons + r'\Icons\power.ico', 48, 48)
-
-
 def _escape_special_char(string):
 	"""
 		Is called on all paths to remove all special characters but it's not good.
@@ -539,46 +524,6 @@ def _get_send_keys_strings(keyboard_events):
 		return _get_typed_keys(keyboard_events)
 
 
-t0_progress_icon_timings = time.time()
-progress_icon_timings = [0, 0, 0, 0, 0, 0, 0]
-
-
-def _overlay_add_progress_icon(main_overlay, i, x, y):
-	global t0_progress_icon_timings
-	main_overlay.add(
-		geometry=oaam.Shape.rectangle, x=x, y=y, width=52, height=52,
-		color=(0, 0, 0), thickness=1, brush=oaam.Brush.solid, brush_color=(255, 255, 254))
-	main_overlay.add(
-		geometry=oaam.Shape.triangle,
-		xyrgb_array=((x + 1, y + 1, 255, 255, 254), (x + 1, y + 52, 128, 128, 128), (x + 51, y + 52, 255, 255, 254)),
-		thickness=0)
-	dt = time.time() - t0_progress_icon_timings
-	nb_dt = int(dt/0.01)
-	if nb_dt > 255:
-		nb_dt = int(255)
-	progress_icon_timings[i % 6 -1] = nb_dt
-	
-	for b in range(i % 6):
-		c = progress_icon_timings[b]
-		main_overlay.add(
-			geometry=oaam.Shape.rectangle, x=x + 6, y=y + 6 + b * 8, width=40, height=6,
-			# color=(0, 255, 0), thickness=1, brush=oaam.Brush.solid, brush_color=(0, 200, 0))
-			color=(c, int(255 - c/2), c ), thickness=1, brush=oaam.Brush.solid, brush_color=(c, int(255 - c), 0))
-	t0_progress_icon_timings = time.time()
-
-
-def _overlay_add_mode_icon(main_overlay, hicon, x, y):
-	main_overlay.add(
-		geometry=oaam.Shape.rectangle, x=x, y=y, width=52, height=52,
-		color=(0, 0, 0), thickness=1, brush=oaam.Brush.solid, brush_color=(255, 255, 254))
-	main_overlay.add(
-		geometry=oaam.Shape.triangle,
-		xyrgb_array=((x + 1, y + 1, 255, 255, 254), (x + 1, y + 52, 128, 128, 128), (x + 51, y + 52, 255, 255, 254)),
-		thickness=0)
-	main_overlay.add(
-		geometry=oaam.Shape.image, hicon=hicon, x=int(x+2), y=int(y+2))
-
-
 class Recorder(Thread):
 	"""
 	Recorder is a class thread used to record UI events in clipboard or in a file.
@@ -616,7 +561,9 @@ class Recorder(Thread):
 		self.desktop = pywinauto.Desktop(backend='uia', allow_magic_lookup=False)
 		self.daemon = True
 		self.event_list = []
-		self._copy_count = 0
+		self.last_copy_time = None
+		self.last_recorded_file = None
+		self._cursor_on_own_window = False
 		self._mode = "Initializing"
 		self._process_menu_click_mode = False
 		self._smart_mode = False
@@ -698,6 +645,8 @@ class Recorder(Thread):
 
 	def __mouse_on(self, mouse_event):
 		if self.mode == "Record":
+			if self._cursor_on_own_window and isinstance(mouse_event, (mouse.ButtonEvent, mouse.WheelEvent)):
+				return  # a click on the control panel of the recorder is not a user action to record
 			# Replaced in place: copying the list on each move slows the hook down as the recording grows.
 			if isinstance(mouse_event, mouse.MoveEvent) and self.event_list and \
 					isinstance(self.event_list[-1], mouse.MoveEvent):
@@ -720,7 +669,6 @@ class Recorder(Thread):
 			
 	def __display_found_elemenet_by_key(self):
 		if self.last_element_event:
-			self._copy_count = 2
 			x, y = win32api.GetCursorPos()
 			l_e_e = self.last_element_event
 			dx, dy = _compute_dx_dy(x, y, l_e_e.rectangle)
@@ -736,6 +684,7 @@ class Recorder(Thread):
 			code += '")\n'
 			code += '\twrapper.draw_outline()\n'
 			pyperclip.copy(code)
+			self.last_copy_time = time.time()
 			if self.event_list and self.mode == "Record":
 				self.event_list.append(FindEvent(path=l_e_e.path, dx=dx, dy=dy, time=time.time()))
 				
@@ -822,10 +771,9 @@ class Recorder(Thread):
 		if not ev_list and os.path.isfile(dir_path + r"\pywinauto_recorder.exe"):
 			print("Couldn't set keyboard hooks. Trying once again...\n")
 			time.sleep(0.5)
-			os.system(dir_path + r"\pywinauto_recorder.exe --no_splash_screen")
+			os.system(dir_path + r"\pywinauto_recorder.exe")
 			sys.exit(1)
 		elements = []
-		i = 0
 		previous_wrapper_path = None
 		unique_wrapper_path = None
 		strategies = [Strategy.unique_path, Strategy.array_2D, Strategy.array_1D]
@@ -833,7 +781,6 @@ class Recorder(Thread):
 		self.mode = "Info"
 		#strategy_unique_path_again_done = False
 		while self.mode != "Quit":
-			i = i + 1
 			try:
 				self._loop_t0 = time.time()
 				self.main_overlay.clear_all()
@@ -850,6 +797,13 @@ class Recorder(Thread):
 				#wrapper = self.my_from_point(*cursor_pos)
 				if wrapper is None:
 					time.sleep(0.01)
+					continue
+				self._cursor_on_own_window = wrapper.process_id() == os.getpid()
+				if self._cursor_on_own_window:
+					# Nothing to inspect or record on the control panel of the recorder itself
+					self.element_info_tooltip.hide()
+					self.main_overlay.refresh()
+					time.sleep(0.05)
 					continue
 				wrapper_path = get_wrapper_path(wrapper)
 				if not wrapper_path:
@@ -917,36 +871,14 @@ class Recorder(Thread):
 					self.last_element_event = ElementEvent(strategy, wrapper_rectangle, unique_wrapper_path)
 					if self.event_list and self.mode == "Record":
 						self.event_list.append(self.last_element_event)
-				nb_icons = 0
-				if self.mode == "Record":
-					_overlay_add_mode_icon(self.main_overlay, IconSet.hicon_record, 10, 10)
-					nb_icons += 1
-				elif self.mode == "Stop":
+				if self.mode in ("Stop", "Play"):
 					self.element_info_tooltip.hide()
 					self.main_overlay.clear_all()
-					_overlay_add_mode_icon(self.main_overlay, IconSet.hicon_stop, 10, 10)
 					self.main_overlay.refresh()
-					while self.mode == "Stop":
+					while self.mode in ("Stop", "Play"):
 						time.sleep(0.1)
-				elif self.mode == "Play":
-					self.element_info_tooltip.hide()
-					self.main_overlay.clear_all()
-					_overlay_add_mode_icon(self.main_overlay, IconSet.hicon_play, 10, 10)
-					self.main_overlay.refresh()
-					while self.mode == "Play":
-						time.sleep(1.0)
-				if self.mode in ("Record", "Info"):
-					_overlay_add_progress_icon(self.main_overlay, i, 10 + 60 * nb_icons, 10)
-					nb_icons += 1
 				if self.mode == "Info":
 					self.element_info_tooltip.show()
-				if self.smart_mode:
-					_overlay_add_mode_icon(self.main_overlay, IconSet.hicon_light_on, 10 + 60 * nb_icons, 10)
-					nb_icons += 1
-				if self._copy_count > 0:
-					_overlay_add_mode_icon(self.main_overlay, IconSet.hicon_clipboard, 10 + 60 * nb_icons, 10)
-					nb_icons += 1
-					self._copy_count = self._copy_count - 1
 				
 				self.main_overlay.refresh()
 				
@@ -1046,7 +978,6 @@ class Recorder(Thread):
 		time.sleep(0.6)  # wait the recorder to be fully ready
 		x, y = win32api.GetCursorPos()
 		self.event_list = [mouse.MoveEvent(x, y, time.time())]
-		_overlay_add_mode_icon(self.main_overlay, IconSet.hicon_record, 10, 10)
 		self.element_info_tooltip.hide()
 		self.main_overlay.clear_all()
 		self.main_overlay.refresh()
@@ -1070,9 +1001,9 @@ class Recorder(Thread):
 			self.started_recording_with_keyboard = False
 			_process_events(events, process_menu_click=self.process_menu_click_mode)
 			_clean_events(events)
-			return _write_in_file(events, relative_coordinate_mode=self.relative_coordinate_mode)
+			self.last_recorded_file = _write_in_file(events, relative_coordinate_mode=self.relative_coordinate_mode)
+			return self.last_recorded_file
 		self.main_overlay.clear_all()
-		_overlay_add_mode_icon(self.main_overlay, IconSet.hicon_stop, 10, 10)
 		self.main_overlay.refresh()
 		self.mode = "Stop"
 		return None

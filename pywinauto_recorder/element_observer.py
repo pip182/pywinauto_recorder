@@ -4,7 +4,7 @@ from pywinauto import Desktop
 from win32api import GetSystemMetrics, GetCursorPos
 from time import sleep
 from multiprocessing import Process, Event
-from pywinauto_recorder.recorder import IconSet, _find_common_path, _overlay_add_mode_icon
+from pywinauto_recorder.recorder import _find_common_path
 import traceback
 
 wrapper_old_info_tip = None
@@ -88,8 +88,6 @@ def _display_info_tiptool(desktop, info_overlay, screen_width):
 		info_left = screen_width - tooltip_width - 10
 	info_top = 150
 
-	_overlay_add_mode_icon(info_overlay, IconSet.hicon_search, info_left, info_top - 54)
-	
 	info_overlay.add(
 		geometry=oaam.Shape.rectangle, x=info_left, y=info_top - 2, width=tooltip_width, height=tooltip_height,
 		thickness=1, color=(0, 0, 0), brush=oaam.Brush.solid, brush_color=(222, 254, 255))
