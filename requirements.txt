@@ -1,5 +1,4 @@
 pywinauto
-overlay_arrows_and_more==0.5.0
 keyboard
 mouse
 pyperclip

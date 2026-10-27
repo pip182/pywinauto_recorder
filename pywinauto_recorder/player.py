@@ -1064,12 +1064,13 @@ def _show_console_window(cmd_show):
 		windll.user32.ShowWindow(h_console, cmd_show)
 
 
-def playback(str_code='', filename=''):
+def playback(str_code='', filename='', on_error=None):
 	"""
 	This function plays back a string of code or a Python file.
 
 	:param str_code: The Python code to be played back
 	:param filename: The name of the file corresponding to the Python code to be played back
+	:param on_error: Called with the traceback if the code raises an exception, instead of printing it in the console
 	"""
 	import traceback
 	import os
@@ -1086,7 +1087,8 @@ def playback(str_code='', filename=''):
 		compiled_code = compile(str_code, filename, 'exec')
 		exec(compiled_code)
 	except Exception:
-		_show_console_window(3)
+		if not on_error:
+			_show_console_window(3)
 		exc_type, exc_value, exc_traceback = sys.exc_info()
 		output = traceback.format_exception(exc_type, exc_value, exc_traceback)
 		i_line = d_line = 0
@@ -1097,6 +1099,9 @@ def playback(str_code='', filename=''):
 				if "pywinauto_recorder.py" in line:
 					d_line = i_line
 		
+		if on_error:
+			on_error(''.join(output[d_line:]))
+			return
 		for line in output[d_line:]:
 			print(line, file=sys.stderr, end='')
 		input("Press Enter to continue...")

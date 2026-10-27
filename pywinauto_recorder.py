@@ -36,13 +36,22 @@ if __name__ == '__main__':
 		"filename", metavar='path', help="replay a python script", type=str, action='store', nargs='?', default='')
 	args = parser.parse_args()
 	if args.filename:
+		# Qt is only loaded to report an error, so that replaying doesn't wait for it
+		def show_error(error):
+			from pywinauto_recorder.control_panel import get_application, show_playback_error
+			get_application()
+			show_playback_error(None, error, blocking=True)
+
 		recorder = Recorder()
 		if os_path_isfile(args.filename):
 			print("Replaying: " + args.filename)
-			recorder.playback(filename=args.filename)
+			recorder.playback(filename=args.filename, on_error=show_error)
 		else:
 			print("Error: file '" + args.filename + "' not found.")
-			input("Press Enter to continue...")
+			from PyQt6.QtWidgets import QMessageBox
+			from pywinauto_recorder.control_panel import get_application
+			get_application()
+			QMessageBox.warning(None, "Pywinauto recorder", "File not found:\n" + args.filename)
 		print("Exit")
 	else:
 		from PyQt6.QtWidgets import QMessageBox
