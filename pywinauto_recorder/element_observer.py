@@ -33,6 +33,33 @@ def _split_path(path):
 	return [list(get_entry(entry)[:2]) for entry in get_entry_list(path)]
 
 
+def _entry_hint(element_info):
+	"""
+	:return: What tells apart an element without name: its automation id (the name of the control in the code of
+	WinForms and WPF applications), else its class name, else ''
+	"""
+	automation_id = element_info.automation_id or ''
+	if automation_id and not automation_id.isdigit():  # WinForms gives the window handle when there is nothing better
+		return automation_id
+	class_name = element_info.class_name or ''
+	if class_name.startswith('WindowsForms10.'):  # the same for most WinForms controls
+		return ''
+	return class_name
+
+
+def _entries(wrapper):
+	""":return: The [name, type, hint] of the element and of its parents from its top-level window (see _entry_hint)"""
+	entries = []
+	top_level_parent = wrapper.top_level_parent()
+	while True:
+		element_info = wrapper.element_info
+		name = element_info.name
+		entries.append([name, element_info.control_type, '' if name else _entry_hint(element_info)])
+		if wrapper == top_level_parent:
+			return entries[::-1]
+		wrapper = wrapper.parent()
+
+
 def _short(value):
 	value = str(value)
 	return value if len(value) <= MAX_VALUE_LENGTH else value[:MAX_VALUE_LENGTH] + '…'
@@ -40,7 +67,12 @@ def _short(value):
 
 def _element_properties(wrapper, str_name, str_type):
 	""":return: The [label, value] of the properties worth knowing to write code using the element"""
-	properties = [
+	properties = []
+	if wrapper.element_info.automation_id:
+		properties.append(['automation id', wrapper.element_info.automation_id])
+	if wrapper.element_info.class_name:
+		properties.append(['class name', wrapper.element_info.class_name])
+	properties += [
 		['process id', str(wrapper.element_info.process_id)],
 		['native window handle', str(wrapper.element_info.handle)]]
 	value = None
@@ -106,11 +138,12 @@ def _display_info_tiptool(desktop, info_queue):
 	else:
 		return
 
-	end_path = get_wrapper_path(wrapper)[len(common_path_info_tip)::]
-	element = _split_path(end_path)
-	str_name, str_type = element[-1] if element else ('', None)
+	entries = _entries(wrapper)
+	n_context = len(_split_path(common_path_info_tip))
+	context, element = entries[:n_context], entries[n_context:]
+	str_name, str_type, _ = element[-1] if element else ('', None, '')
 	_post(info_queue, {
-		'context': _split_path(common_path_info_tip),
+		'context': context,
 		'element': element,
 		'properties': _element_properties(wrapper, str_name, str_type),
 		'rectangle': _rectangle(wrapper),
@@ -150,7 +183,7 @@ class ElementInfoTooltip:
 	"""
 	Finds the element under the cursor in a separate process, and posts its information to `queue` for the control
 	panel: a dict with the 'context' path it shares with the previous element, its own 'element' path (both lists of
-	[name, type]), its 'properties' (a list of [label, value]), and the 'rectangle' of the element and the
+	[name, type, hint], see _entry_hint), its 'properties' (a list of [label, value]), and the 'rectangle' of the element and the
 	'parent_rectangle' of that common parent (None if there is none), as [x, y, width, height] in screen pixels.
 	None is posted when hidden.
 	"""

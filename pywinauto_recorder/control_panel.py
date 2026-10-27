@@ -15,7 +15,7 @@ import pyperclip
 from PyQt6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, QRect, QRectF, QSettings, Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QCursor, QDesktopServices, QGuiApplication, QIcon, QPainter, QPen, \
 	QRegion
-from PyQt6.QtWidgets import QApplication, QFileDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QMenu, \
+from PyQt6.QtWidgets import QApplication, QDialog, QFileDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QMenu, \
 	QMessageBox, QToolButton, \
 	QSizePolicy, QVBoxLayout, QWidget, QWidgetAction
 from . import __version__
@@ -26,19 +26,25 @@ __all__ = ['ControlPanel', 'ElementInfoBox', 'HighlightOverlay', 'get_applicatio
 OUTPUT_FOLDER = Path.home() / 'Pywinauto recorder'
 WEB_SITE = 'https://pywinauto-recorder.readthedocs.io'
 COPY_FEEDBACK_DURATION = 2.0
+RECORDED_FEEDBACK_DURATION = 1.5  # the status bar flashes for each recorded click or key, longer for a missed click
+MISSED_FEEDBACK_DURATION = 4.0
 IDLE_OPACITY = 0.35
 FADE_MS = 200
 
 HELP_TEXT = """<h3>Pywinauto recorder {version}</h3>
 <table cellspacing="4">
 <tr><td><b>CTRL+ALT+R</b></td><td>Start / stop recording</td></tr>
+<tr><td><b>CTRL+ALT+N</b></td><td>Add a note while recording (or <b>✎ Note</b>)</td></tr>
 <tr><td><b>CTRL+SHIFT+D</b></td><td>Display / hide element information</td></tr>
 <tr><td><b>CTRL+ALT+S</b></td><td>Smart mode on / off</td></tr>
 <tr><td><b>CTRL+SHIFT+F</b></td><td>Copy the code finding the element under the cursor</td></tr>
 </table>
-<p>Recorded scripts are saved in <i>{folder}</i> and copied to the clipboard.</p>
-<p>To replay a script: click <b>Replay</b>, use <b>Replay file...</b> in the ⋯ menu,
-drag and drop it on pywinauto_recorder.exe or run <i>python.exe recorded_file.py</i>.</p>
+<p>Recordings are saved as JSON files in <i>{folder}</i> and copied to the clipboard. Each action comes with the
+UI Automation properties of its element, and the file contains the script replaying the recording.</p>
+<p>After recording, the step editor opens: reorder, change or delete the steps and add notes for the reader of
+the recording (e.g. an AI agent). <b>Edit last recording...</b> in the ⋯ menu opens it again.</p>
+<p>To replay a recording: click <b>Replay</b>, use <b>Replay file...</b> in the ⋯ menu
+or drag and drop it on pywinauto_recorder.exe.</p>
 <p><a href="{web_site}">{web_site}</a></p>"""
 
 STYLE_SHEET = """
@@ -58,6 +64,12 @@ QLabel { color: #a0a0a0; font: 8pt "Segoe UI"; }
 #status_bar[state="copied"] { background: #1d3324; border-color: #2f5a3c; border-left-color: #50c878; }
 #status_bar[state="copied"] QLabel { color: #c0f0cc; }
 #status_bar[state="copied"] QLabel#status_dot { color: #50c878; }
+#status_bar[state="recorded"] { background: #1d3324; border-color: #2f5a3c; border-left-color: #50c878; }
+#status_bar[state="recorded"] QLabel { color: #c0f0cc; }
+#status_bar[state="recorded"] QLabel#status_dot { color: #50c878; }
+#status_bar[state="missed"] { background: #3a2a14; border-color: #6a4a20; border-left-color: #f08c20; }
+#status_bar[state="missed"] QLabel { color: #f8d8b0; }
+#status_bar[state="missed"] QLabel#status_dot { color: #f08c20; }
 QLabel#grip { font: 16pt "Segoe UI"; padding: 0 4px; }
 QToolButton { color: #f0f0f0; background: transparent; border: none; border-radius: 6px;
               padding: 8px 14px; font: 13pt "Segoe UI"; }
@@ -303,20 +315,46 @@ QFrame#separator { background: #444444; }
 """
 
 
-def _entry_html(name, type_, name_style=''):
-	name_html = html.escape(name) if name else '<i style="color:#8a8a8a">no name</i>'
-	if name_style:
+def _entry_html(name, type_, name_style='', hint='', count=1):
+	"""
+	:param hint: What tells apart an element without name (its automation id or class name), shown instead of its name
+	:param count: The number of consecutive entries it stands for
+	"""
+	if name:
+		name_html = html.escape(name)
+	elif hint:
+		name_html = f'<i style="color:#9fb3c2">{html.escape(hint)}</i>'
+	else:
+		name_html = ''
+	if name_html and name_style:
 		name_html = f'<span style="{name_style}">{name_html}</span>'
-	if not type_:
-		return name_html
-	return f'{name_html} <span style="color:#7a8a96">{html.escape(type_)}</span>'
+	type_html = ''
+	if type_:
+		type_html = f'<span style="color:#7a8a96">{html.escape(type_)}{" ×" + str(count) if count > 1 else ""}</span>'
+	return ' '.join(part for part in (name_html, type_html) if part) or '<i style="color:#8a8a8a">no name</i>'
+
+
+def _entry(entry):
+	""":return: The [name, type, hint] of an entry posted as [name, type] or [name, type, hint]"""
+	return (list(entry) + [''])[:3]
+
+
+def _path_html(entries):
+	"""The entries of a path, those without name nor hint merged with the next ones of the same type ('Pane ×3')."""
+	runs = []  # [name, type, hint, count]
+	for name, type_, hint in entries:
+		if runs and not name and not hint and runs[-1][:3] == ['', type_, '']:
+			runs[-1][3] += 1
+		else:
+			runs.append([name, type_, hint, 1])
+	return ' › '.join(_entry_html(name, type_, hint=hint, count=count) for name, type_, hint, count in runs)
 
 
 class ElementInfoBox(QWidget):
 	"""
 	The information of the element under the cursor in Info mode, read from the queue of the ElementInfoTooltip of
 	the recorder: a dict with the 'context' path the element shares with the previous one, its own 'element' path
-	(both lists of [name, type]) and its 'properties' (a list of [label, value]), or None to hide the box.
+	(both lists of [name, type, hint]) and its 'properties' (a list of [label, value]), or None to hide the box.
 
 	It lets the mouse through and is displayed on the half of the screen away from the cursor.
 	"""
@@ -395,17 +433,18 @@ class ElementInfoBox(QWidget):
 		if info.get('parent_rectangle'):
 			rectangles.append(('common_parent', *info['parent_rectangle']))
 		self.rectangles = tuple(rectangles)
-		context = info.get('context') or []
-		self.context.setText(' › '.join(_entry_html(name, type_) for name, type_ in context))
+		context = [_entry(entry) for entry in info.get('context') or []]
+		self.context.setText(_path_html(context))
 		self.context.setVisible(bool(context))
-		*parents, last = info.get('element') or [['', None]]
-		parts = [_entry_html(name, type_) for name, type_ in parents]
-		name, type_ = last
-		element = _entry_html(name, None, 'color:#ffffff; font-size:11pt; font-weight:600')
+		*parents, last = [_entry(entry) for entry in info.get('element') or []] or [['', None, '']]
+		name, type_, hint = last
+		element = ''
+		if name or hint:
+			element = _entry_html(name, None, hint=hint, name_style='color:#ffffff; font-size:11pt; font-weight:600')
 		if type_:
-			element += (f' &nbsp;<span style="background-color:#1e2a33; color:#4aa3f0; font-size:8pt">'
-			            f'&nbsp;{html.escape(type_)}&nbsp;</span>')
-		self.element.setText(' › '.join(parts + [element]))
+			element += (f'{" &nbsp;" if element else ""}<span style="background-color:#1e2a33; color:#4aa3f0; '
+			            f'font-size:8pt">&nbsp;{html.escape(type_)}&nbsp;</span>')
+		self.element.setText(' › '.join(part for part in (_path_html(parents), element) if part))
 		rows = ''.join(
 			f'<tr><td style="color:#8a8a8a; font-family:Consolas; padding-right:12px">{html.escape(label)}</td>'
 			f'<td>{html.escape(value).replace(chr(10), "<br>")}</td></tr>'
@@ -454,6 +493,9 @@ class ControlPanel(QWidget):
 		self.settings = QSettings('Pywinauto recorder', 'Pywinauto recorder')
 		self._busy = False
 		self._hidden_for_replay = False
+		self._note_dialog = None
+		self._editors = []
+		self._edited_file = getattr(recorder, 'last_recorded_file', None)  # opened in the editor after recording
 		self._drag_offset = None
 
 		self.setWindowTitle('Pywinauto recorder')
@@ -484,11 +526,17 @@ class ControlPanel(QWidget):
 		grip.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
 		bar.addWidget(grip)
 		self.btn_record = self._add_button(bar, 'record', self.toggle_recording, 'Start / stop recording (CTRL+ALT+R)')
-		self.btn_replay = self._add_button(bar, 'replay', self.replay, 'Replay the last recorded script')
+		self.btn_replay = self._add_button(bar, 'replay', self.replay, 'Replay the last recording')  # Note when recording
 		self.btn_info = self._add_button(
 			bar, 'info', self.toggle_info, 'Display element information (CTRL+SHIFT+D)', checkable=True)
 		self.btn_smart = self._add_button(
-			bar, 'smart', self.toggle_smart_mode, 'Smart mode (CTRL+ALT+S)', checkable=True)
+			bar, 'smart', self.toggle_smart_mode,
+			'Smart mode (CTRL+ALT+S)\n'
+			'When several elements have the same path (e.g. the cells of a grid), the one under the cursor is\n'
+			'identified by its position relative to a unique element on its left (outlined in blue), such as\n'
+			'the label of its row.\n'
+			'Off: it is identified by its row and column among the elements having the same path.',
+			checkable=True)
 		self.btn_info.setText('ⓘ Info')
 		self.btn_smart.setText('★ Smart')
 		self.btn_replay.setText('▶ Replay')
@@ -571,13 +619,18 @@ class ControlPanel(QWidget):
 			menu.addAction(header)
 
 		add_header('Replay')
-		add_action('Replay clipboard', 'Replay the Python code currently in the clipboard', self.replay_clipboard)
-		add_action('Replay file...', 'Choose a Python script and replay it', self.replay_file)
-		add_header('Recorded scripts')
+		add_action('Replay clipboard', 'Replay the recording (JSON) or the Python code currently in the clipboard',
+		           self.replay_clipboard)
+		add_action('Replay file...', 'Choose a recording (JSON) or a Python script and replay it', self.replay_file)
+		add_header('Recordings')
 		self.action_copy_last_script = add_action(
-			'Copy last script to clipboard', 'Copy the code of the last recorded script to the clipboard',
+			'Copy last recording to clipboard', 'Copy the JSON of the last recording to the clipboard',
 			self.copy_last_script)
-		add_action('Open output folder', f'Open {OUTPUT_FOLDER}, where the recorded scripts are saved',
+		self.action_edit_last = add_action(
+			'Edit last recording...', 'Reorder, change or delete the steps of the last recording and add notes',
+			lambda: self.edit_recording(self.last_recorded_file))
+		add_action('Edit a recording...', 'Choose a recording (JSON) and edit its steps', self.edit_recording_file)
+		add_action('Open output folder', f'Open {OUTPUT_FOLDER}, where the recordings are saved',
 		           self.open_output_folder)
 		add_header('Recording options')
 		self.action_relative_coordinates = add_action(
@@ -589,6 +642,10 @@ class ControlPanel(QWidget):
 			'Record menu_click',
 			'Record a series of clicks through a menu as a single menu_click("File->Save") line',
 			lambda checked: setattr(self.recorder, 'process_menu_click_mode', checked), checkable=True)
+		self.action_edit_after_recording = add_action(
+			'Edit steps after recording', 'Open the step editor when a recording stops, to add notes and fix steps',
+			lambda checked: self._save_setting('edit_after_recording', checked), checkable=True)
+		self.action_edit_after_recording.setChecked(self.settings.value('edit_after_recording', True, type=bool))
 		add_header('Display')
 		self.action_info_box = add_action(
 			'Element information box',
@@ -602,9 +659,12 @@ class ControlPanel(QWidget):
 		menu.aboutToHide.connect(lambda: QTimer.singleShot(0, self._update_opacity))
 		return menu
 
-	def _set_info_box_enabled(self, enabled):
-		self.settings.setValue('show_info_box', enabled)
+	def _save_setting(self, key, value):
+		self.settings.setValue(key, value)
 		self.settings.sync()  # written now, in case the recorder doesn't quit normally
+
+	def _set_info_box_enabled(self, enabled):
+		self._save_setting('show_info_box', enabled)
 		if getattr(self, 'info_box', None):
 			self.info_box.set_enabled(enabled)
 
@@ -612,6 +672,7 @@ class ControlPanel(QWidget):
 		self.action_relative_coordinates.setChecked(self.recorder.relative_coordinate_mode)
 		self.action_process_menu_click.setChecked(self.recorder.process_menu_click_mode)
 		self.action_copy_last_script.setEnabled(self.last_recorded_file is not None)
+		self.action_edit_last.setEnabled(self.last_recorded_file is not None)
 
 	def mousePressEvent(self, event):
 		if event.button() == Qt.MouseButton.LeftButton:
@@ -678,7 +739,10 @@ class ControlPanel(QWidget):
 		self._run_in_background(self.recorder.playback, str_code, filename, self.playback_failed.emit)
 
 	def replay(self):
-		if self.last_recorded_file:
+		if self.recorder.mode == 'Record':  # the button adds a note while recording
+			self.recorder.request_note()
+			self._refresh()
+		elif self.last_recorded_file:
 			self._replay(filename=str(self.last_recorded_file))
 		else:
 			self.replay_clipboard()
@@ -689,13 +753,53 @@ class ControlPanel(QWidget):
 	def replay_file(self):
 		initial_dir = OUTPUT_FOLDER if OUTPUT_FOLDER.is_dir() else Path.home()
 		file_name, _ = QFileDialog.getOpenFileName(
-			self, 'Replay a Python script', str(initial_dir), 'Python scripts (*.py);;All files (*.*)')
+			self, 'Replay a recording or a Python script', str(initial_dir),
+			'Recordings and Python scripts (*.json *.py);;All files (*.*)')
 		if file_name:
 			self._replay(filename=file_name)
 
 	def copy_last_script(self):
 		if self.last_recorded_file:
 			pyperclip.copy(self.last_recorded_file.read_text(encoding='utf-8'))
+
+	def edit_recording(self, file_name):
+		if not file_name:
+			return
+		file_name = Path(file_name)
+		self._editors = [editor for editor in self._editors if editor.isVisible()]
+		editor = next((editor for editor in self._editors if editor.file_name == file_name), None)
+		if editor is None:
+			from .step_editor import StepEditor
+			try:
+				editor = StepEditor(file_name)
+			except (OSError, ValueError) as error:
+				QMessageBox.critical(self, 'Pywinauto recorder', f'Cannot edit {file_name.name}:\n{error}')
+				return
+			editor.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+			self._editors.append(editor)
+		editor.show()
+		editor.raise_()
+		editor.activateWindow()
+
+	def edit_recording_file(self):
+		initial_dir = OUTPUT_FOLDER if OUTPUT_FOLDER.is_dir() else Path.home()
+		file_name, _ = QFileDialog.getOpenFileName(
+			self, 'Edit a recording', str(initial_dir), 'Recordings (*.json);;All files (*.*)')
+		if file_name:
+			self.edit_recording(file_name)
+
+	def _ask_for_note(self):
+		"""Asks for the note requested with CTRL+ALT+N or the Note button, and gives it to the recorder."""
+		from .step_editor import NoteDialog
+		self._note_dialog = dialog = NoteDialog()
+		dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+		def finished(result):
+			self.recorder.add_note(dialog.text() if result == QDialog.DialogCode.Accepted else None)
+			self._note_dialog = None
+
+		dialog.finished.connect(finished)
+		dialog.open()
 
 	def toggle_info(self):
 		if self.recorder.mode == 'Info':
@@ -749,7 +853,20 @@ class ControlPanel(QWidget):
 		if last_copy_time and time.time() - last_copy_time < COPY_FEEDBACK_DURATION:
 			return 'copied', 'Code copied to clipboard'
 		if mode == 'Record':
-			return 'record', 'Recording  ·  CTRL+ALT+R to stop'
+			count = getattr(self.recorder, 'recorded_action_count', 0)
+			last_action = getattr(self.recorder, 'last_recorded_action', None)
+			if last_action:
+				action_time, recorded, description = last_action
+				age = time.time() - action_time
+				if recorded and age < RECORDED_FEEDBACK_DURATION:
+					return 'recorded', f'Recorded #{count}  ·  {description}'
+				if not recorded and age < MISSED_FEEDBACK_DURATION:
+					return 'missed', description
+			if self.recorder.note_pending:
+				return 'busy', 'Writing a note  ·  the keys typed in it are not recorded'
+			if count:
+				return 'record', f'Recording  ·  {count} recorded  ·  CTRL+ALT+N adds a note'
+			return 'record', 'Recording  ·  CTRL+ALT+N adds a note, CTRL+ALT+R stops'
 		if mode == 'Initializing':
 			return 'busy', 'Starting...'
 		if mode == 'Info':
@@ -772,7 +889,23 @@ class ControlPanel(QWidget):
 		else:
 			self.btn_record.setText('● Record')
 			self.btn_record.setEnabled(ready)
-		self.btn_replay.setEnabled(ready and mode != 'Record')
+		if mode == 'Record':
+			self.btn_replay.setText('✎ Note')
+			self.btn_replay.setToolTip('Add a note to the recording (CTRL+ALT+N)')
+			self.btn_replay.setEnabled(not self._busy and not self.recorder.note_pending)
+		else:
+			self.btn_replay.setText('▶ Replay')
+			self.btn_replay.setToolTip('Replay the last recording')
+			self.btn_replay.setEnabled(ready)
+		if mode == 'Record' and self.recorder.note_pending and self._note_dialog is None:
+			self._ask_for_note()
+		elif mode != 'Record' and self._note_dialog is not None:
+			self._note_dialog.reject()  # the recording stopped
+		recorded_file = getattr(self.recorder, 'last_recorded_file', None)
+		if recorded_file != self._edited_file and mode != 'Record':
+			self._edited_file = recorded_file
+			if self.action_edit_after_recording.isChecked():
+				self.edit_recording(self.last_recorded_file)
 		self.btn_info.setEnabled(ready and mode in ('Info', 'Stop'))
 		self.btn_info.setChecked(mode == 'Info')
 		self.btn_smart.setChecked(self.recorder.smart_mode)

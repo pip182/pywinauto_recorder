@@ -1,5 +1,6 @@
 import pytest
 import os
+import json
 from pywinauto_recorder.player import PlayerSettings, UIPath, load_dictionary, shortcut, find_main_windows, \
 	find, move, click, double_click, triple_click, move_window, FailedSearch, \
 	start_application, focus_on_application, kill_application, connect_application
@@ -103,10 +104,9 @@ def test_recorder_click(start_kill_app, wait_recorder_ready):
 	
 	str2num = {"Zero": 0, "One": 1, "Two": 2, "Three": 3, "Four": 4, "Five": 5, "Six": 6}
 	click_count = [0, 0, 0, 0, 0, 0, 0]
-	with open(record_file_name, 'r') as f:
-		line = f.readline()
-		while line:
-			line = f.readline()
+	with open(record_file_name, encoding='utf-8') as f:
+		script = json.load(f)['pywinauto_recorder_script']
+		for line in script.splitlines():
 			for str_number, i_number in str2num.items():
 				if str_number in line:
 					if "triple_click" in line:

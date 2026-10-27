@@ -1066,20 +1066,27 @@ def _show_console_window(cmd_show):
 
 def playback(str_code='', filename='', on_error=None):
 	"""
-	This function plays back a string of code or a Python file.
+	This function plays back a string of code or a Python file, or a recording (JSON) of the recorder.
 
-	:param str_code: The Python code to be played back
-	:param filename: The name of the file corresponding to the Python code to be played back
+	:param str_code: The Python code to be played back, or the JSON of a recording
+	:param filename: The name of the file corresponding to the Python code or to the recording to be played back
 	:param on_error: Called with the traceback if the code raises an exception, instead of printing it in the console
 	"""
 	import traceback
 	import os
 	import sys
 	import codecs
+	import json
 	
 	if str_code == '' and os.path.isfile(filename):
 		with codecs.open(filename, "r", encoding='utf-8') as python_file:
 			str_code = python_file.read()
+	if str_code.lstrip().startswith('{'):
+		# A recording of the recorder: its script is replayed
+		try:
+			str_code = json.loads(str_code)['pywinauto_recorder_script']
+		except (ValueError, KeyError, TypeError):
+			pass
 	try:
 		script_dir = os.path.abspath(os.path.dirname(filename))
 		os.chdir(os.path.abspath(script_dir))

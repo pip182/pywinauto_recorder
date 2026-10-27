@@ -8,6 +8,7 @@ import win32con
 from PIL import Image
 import time
 import os
+import json
 
 
 ################################################################################################
@@ -86,8 +87,9 @@ def test_recorder_mouse_move(start_kill_app):
 
 	# The recorded file is patched to remove all that is not needed
 	data = ""
-	with open(recorded_file) as text_file:
-		for line in text_file:
+	with open(recorded_file, encoding='utf-8') as json_file:
+		script = json.load(json_file)['pywinauto_recorder_script']
+		for line in script.splitlines(keepends=True):
 			if not (("send_keys" in line) or ("wrapper" in line)):
 				if "drag_and_drop" in line:
 					data += line.replace("drag_and_drop", "right_drag_and_drop")
@@ -100,7 +102,7 @@ def test_recorder_mouse_move(start_kill_app):
 	eval(compiled_code)
 	os.remove(recorded_file)
 	send_keys("{VK_CONTROL down}s{VK_CONTROL up}")
-	recorded_image = str(recorded_file).replace('.py', '.png')
+	recorded_image = str(recorded_file).replace('.json', '.png')
 	select_file("Untitled - Paint||Window->Save As||Window", recorded_image)
 	time.sleep(2)
 	percentage = percentage_white_pixels(recorded_image)

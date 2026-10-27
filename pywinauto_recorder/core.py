@@ -6,7 +6,9 @@ import configparser
 import ast
 from pywinauto import Desktop as PywinautoDesktop
 from pywinauto.controls.uiawrapper import UIAWrapper
+from pywinauto.uia_element_info import UIAElementInfo
 from pywinauto import findwindows
+import win32gui
 # from thefuzz import fuzz
 from .ocr_wrapper import find_all_ocr, OCRWrapper
 
@@ -303,6 +305,25 @@ def get_sorted_region(elements, min_height=8, max_height=9999, min_width=8, max_
 	return len(arrays), w, arrays
 
 
+def filter_by_name(element_infos, name, regex=False):
+	"""
+	It keeps the elements whose name is the given name, or matches it if regex is True.
+	pywinauto's 'title' and 'title_re' criteria can't be used: they match the rich text, which is the content of the
+	edits and of the documents instead of their name, whereas get_wrapper_path writes the names in the paths.
+
+	:param element_infos: The UIAElementInfo list to filter
+	:param name: The name, or the regular expression if regex is True, None to keep all the elements
+	:param regex: True if name is a regular expression
+	:return: The UIAElementInfo list of the matching elements
+	"""
+	if name is None:
+		return element_infos
+	if regex:
+		name_regex = re.compile(name)
+		return [ei for ei in element_infos if name_regex.match(ei.name)]
+	return [ei for ei in element_infos if ei.name == name]
+
+
 def find_window_candidates(root_entry, handle=None):
 	"""
 	It returns a list of windows that match the given root entry
@@ -313,13 +334,24 @@ def find_window_candidates(root_entry, handle=None):
 	if root_entry == "*":
 		title = None
 		control_type = None
-	if is_regex_entry(root_entry):
-		window_candidates = desktop.windows(title_re=title, control_type=control_type,
-		                                    visible_only=False, enabled_only=False, active_only=False, handle=handle)
+	if handle is not None:
+		element_infos = [w.element_info for w in desktop.windows(
+			control_type=control_type, visible_only=False, enabled_only=False, active_only=False, handle=handle)]
 	else:
-		window_candidates = desktop.windows(title=title, control_type=control_type,
-		                                    visible_only=False, enabled_only=False, active_only=False, handle=handle)
-	return window_candidates
+		# Not desktop.windows(): UI Automation would query the hidden windows too, which can't be used, and an
+		# application owning hundreds of them (e.g. bricscad_bsb.exe) makes it take seconds.
+		handles = []
+		win32gui.EnumWindows(lambda h, _: handles.append(h) if win32gui.IsWindowVisible(h) else None, None)
+		element_infos = []
+		for h in handles:
+			try:
+				element_info = UIAElementInfo(h)
+				if control_type is None or element_info.control_type == control_type:
+					element_infos.append(element_info)
+			except Exception:
+				pass  # the window was closed
+	element_infos = filter_by_name(element_infos, title, regex=is_regex_entry(root_entry))
+	return [UIAWrapper(ei) for ei in element_infos]
 
 
 def filter_window_candidates(window_candidates):
@@ -417,15 +449,41 @@ def filter_with_match_entry_list(window, descendants, entry_list):
 	return result
 
 
-def find_elements(full_element_path=None):
+def find_children_along_path(window, entry_list):
+	"""
+	It walks down the path from the window, asking UI Automation only for the children matching each entry. It is much
+	faster than searching all the descendants of the window, which can be thousands in a grid.
+
+	:param window: The UIAElementInfo of the window
+	:param entry_list: The entries of the path below the window, without '*'
+	:return: The UIAElementInfo list of the elements found
+	"""
+	parents = [window]
+	for entry in entry_list:
+		name, control_type, _, _ = get_entry(entry)
+		regex = is_regex_entry(entry)
+		children = []
+		for parent in parents:
+			# The name is a UI Automation condition unless it is empty or a regular expression, filtered below
+			children +=parent.children(control_type=control_type, title=None if regex else name)
+		parents = filter_by_name(children, name, regex=regex)
+		if not parents:
+			break
+	return parents
+
+
+def find_elements(full_element_path=None, window_handle=None):
 	"""
 	It returns the elements (UIAWrapper list) that matche the full_element_path
 
 	:param full_element_path: full path of the element(s) to find
+	:param window_handle: The native handle of the window to search in, the one of the application in focus if None
 	:return: The elements found
 	"""
 	entry_list = get_entry_list(full_element_path)
-	window_candidates = find_window_candidates(entry_list[0], handle=native_window_handle)
+	if window_handle is None:
+		window_handle = native_window_handle
+	window_candidates = find_window_candidates(entry_list[0], handle=window_handle)
 	if window_candidates == []:
 		return []
 	window_candidates = filter_window_candidates(window_candidates)
@@ -442,15 +500,14 @@ def find_elements(full_element_path=None):
 		if entry_list[-1] == '*':
 			eis = findwindows.find_elements(backend="uia", parent=window, top_level_only=False)
 			candidates += filter_with_match_entry_list(window.element_info, eis, entry_list)
-		elif is_regex_entry(entry_list[-1]):
-			eis = findwindows.find_elements(title_re=title, control_type=control_type, backend="uia",
-											parent=None if len(entry_list)==1 else window, top_level_only=len(entry_list)==1)
-			candidates += filter_with_match_entry_list(window.element_info, eis, entry_list)
-		elif control_type == "OCR_Text":
+		elif control_type == "OCR_Text" and not is_regex_entry(entry_list[-1]):
 				candidates += find_ocr_elements(title, window, entry_list)
+		elif len(entry_list) > 1 and '*' not in entry_list:
+			candidates += find_children_along_path(window.element_info, entry_list[1:])
 		else:
-			eis = findwindows.find_elements(title=title, control_type=control_type, backend="uia",
+			eis = findwindows.find_elements(control_type=control_type, backend="uia",
 											parent=None if len(entry_list)==1 else window, top_level_only=len(entry_list)==1)
+			eis = filter_by_name(eis, title, regex=is_regex_entry(entry_list[-1]))
 			candidates += filter_with_match_entry_list(window.element_info, eis, entry_list)
 	candidates = [UIAWrapper(ei) for ei in candidates]
 	
