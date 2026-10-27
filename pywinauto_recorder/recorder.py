@@ -8,9 +8,8 @@ import traceback
 import time
 import win32api
 import win32con
-from threading import Thread
+from threading import Lock, Thread
 import pywinauto
-import overlay_arrows_and_more as oaam
 import keyboard
 import mouse
 from collections import namedtuple
@@ -524,6 +523,39 @@ def _get_send_keys_strings(keyboard_events):
 		return _get_typed_keys(keyboard_events)
 
 
+class Highlights(object):
+	"""
+	The rectangles outlining the elements under the cursor, drawn by the control panel. The recorder fills them
+	between clear_all() and refresh(); get() returns the ones of the last refresh(), as (kind, x, y, width, height)
+	in screen pixels, where kind is 'unique', 'ambiguous', 'selected' or 'reference'.
+	"""
+	def __init__(self):
+		self._lock = Lock()
+		self._pending = []
+		self._shown = ()
+
+	def clear_all(self):
+		with self._lock:
+			self._pending = []
+
+	def add(self, kind, rectangle):
+		r = rectangle
+		with self._lock:
+			self._pending.append((kind, r.left, r.top, r.width(), r.height()))
+
+	def refresh(self):
+		with self._lock:
+			self._shown = tuple(self._pending)
+
+	def get(self):
+		with self._lock:
+			return self._shown
+
+	def quit(self):
+		self.clear_all()
+		self.refresh()
+
+
 class Recorder(Thread):
 	"""
 	Recorder is a class thread used to record UI events in clipboard or in a file.
@@ -557,7 +589,7 @@ class Recorder(Thread):
 		self._loop_t0 = None
 		self.screen_width = GetSystemMetrics(0)
 		self.screen_height = GetSystemMetrics(1)
-		self.main_overlay = oaam.Overlay(transparency=0.4)
+		self.highlights = Highlights()
 		self.desktop = pywinauto.Desktop(backend='uia', allow_magic_lookup=False)
 		self.daemon = True
 		self.event_list = []
@@ -572,24 +604,28 @@ class Recorder(Thread):
 		self.common_path_info_tip = ""
 		self.last_element_event = None
 		self.started_recording_with_keyboard = False
+		self._overlay_warned = False
 		self.element_info_tooltip = ElementInfoTooltip()
 		self.start()
 	
-	def __overlay_add_bold_rectangle(self, wrapper_rectangle, color=(0, 255, 0)):
-		thickness = 5
-		r = wrapper_rectangle
-		self.main_overlay.add(
-			geometry=oaam.Shape.rectangle, x=r.left, y=r.top, width=r.width(), height=thickness,
-			thickness=0, color=(0, 128, 0), brush=oaam.Brush.solid, brush_color=color)
-		self.main_overlay.add(
-			geometry=oaam.Shape.rectangle, x=r.left, y=r.bottom - thickness, width=r.width(), height=thickness,
-			thickness=0, color=(0, 128, 0), brush=oaam.Brush.solid, brush_color=color)
-		self.main_overlay.add(
-			geometry=oaam.Shape.rectangle, x=r.left, y=r.top, width=thickness, height=r.height(),
-			thickness=0, color=(0, 128, 0), brush=oaam.Brush.solid, brush_color=color)
-		self.main_overlay.add(
-			geometry=oaam.Shape.rectangle, x=r.right - thickness, y=r.top, width=thickness, height=r.height(),
-			thickness=0, color=(0, 128, 0), brush=oaam.Brush.solid, brush_color=color)
+	def __warn_if_overlay(self, window):
+		"""
+		The outlines and the information box let the mouse through: if Windows finds them under the cursor instead of
+		the element below them, nothing can be inspected nor recorded where they are.
+		"""
+		if self._overlay_warned:
+			return
+		try:
+			title = window.window_text()
+		except Exception:
+			return
+		if title.startswith('Pywinauto recorder ') and title != 'Pywinauto recorder':
+			self._overlay_warned = True
+			print('Warning: UI Automation finds the window "' + title + '" under the cursor instead of the element '
+			      'below it. Please report it: elements can\'t be inspected nor recorded under this window.')
+
+	def __highlight(self, wrapper_rectangle, kind):
+		self.highlights.add(kind, wrapper_rectangle)
 		
 	def __find_unique_element_array_1d(self, wrapper_rectangle, elements):
 		nb_y, nb_x, candidates = get_sorted_region(elements)
@@ -621,8 +657,8 @@ class Recorder(Thread):
 						previous_wrapper_path2 = wrapper_path2
 						
 						if find_elements(get_wrapper_path(wrapper2)):
-							self.__overlay_add_bold_rectangle(wrapper2_rectangle, color=(0, 0, 255))
-							self.__overlay_add_bold_rectangle(wrapper_rectangle, color=(255, 200, 0))
+							self.__highlight(wrapper2_rectangle, 'reference')
+							self.__highlight(wrapper_rectangle, 'selected')
 							return '#[' + wrapper_path2 + ',' + str(r_x) + ']'
 					return None
 		return None
@@ -637,10 +673,10 @@ class Recorder(Thread):
 				except IndexError:
 					continue
 				if r == wrapper_rectangle:
-					self.__overlay_add_bold_rectangle(r, color=(255, 200, 0))
+					self.__highlight(r, 'selected')
 					unique_array_2d = '#[' + str(r_y) + ',' + str(r_x) + ']'
 				else:
-					self.__overlay_add_bold_rectangle(r, color=(255, 0, 0))
+					self.__highlight(r, 'ambiguous')
 		return unique_array_2d
 
 	def __mouse_on(self, mouse_event):
@@ -783,7 +819,7 @@ class Recorder(Thread):
 		while self.mode != "Quit":
 			try:
 				self._loop_t0 = time.time()
-				self.main_overlay.clear_all()
+				self.highlights.clear_all()
 				cursor_pos = win32api.GetCursorPos()
 				wrapper = self.desktop.from_point(*cursor_pos)
 				
@@ -801,8 +837,9 @@ class Recorder(Thread):
 				self._cursor_on_own_window = wrapper.process_id() == os.getpid()
 				if self._cursor_on_own_window:
 					# Nothing to inspect or record on the control panel of the recorder itself
+					self.__warn_if_overlay(window)
 					self.element_info_tooltip.hide()
-					self.main_overlay.refresh()
+					self.highlights.refresh()
 					time.sleep(0.05)
 					continue
 				wrapper_path = get_wrapper_path(wrapper)
@@ -840,10 +877,10 @@ class Recorder(Thread):
 						continue
 					if len(elements)==1:
 						unique_wrapper_path = wrapper_path
-						self.__overlay_add_bold_rectangle(wrapper_rectangle, color=(0, 255, 0))
+						self.__highlight(wrapper_rectangle, 'unique')
 					else:
 						for e in elements:
-							self.__overlay_add_bold_rectangle(e.rectangle(), color=(255, 0, 0))
+							self.__highlight(e.rectangle(), 'ambiguous')
 
 				if strategy == Strategy.array_1D and elements:
 					x_new, y_new = win32api.GetCursorPos()
@@ -873,20 +910,20 @@ class Recorder(Thread):
 						self.event_list.append(self.last_element_event)
 				if self.mode in ("Stop", "Play"):
 					self.element_info_tooltip.hide()
-					self.main_overlay.clear_all()
-					self.main_overlay.refresh()
+					self.highlights.clear_all()
+					self.highlights.refresh()
 					while self.mode in ("Stop", "Play"):
 						time.sleep(0.1)
 				if self.mode == "Info":
 					self.element_info_tooltip.show()
 				
-				self.main_overlay.refresh()
+				self.highlights.refresh()
 				
 				loop_duration = time.time() - self._loop_t0
 				while loop_duration < 0.1:
 					time.sleep(0.01)
 					loop_duration = time.time() - self._loop_t0
-				time.sleep(0.01)  # main_overlay.clear_all() doit attendre la fin de main_overlay.refresh()
+				time.sleep(0.01)  # highlights.clear_all() doit attendre la fin de highlights.refresh()
 			except Exception:
 				exc_type, exc_value, exc_traceback = sys.exc_info()
 				print(repr(traceback.format_exception(exc_type, exc_value, exc_traceback)))
@@ -896,7 +933,7 @@ class Recorder(Thread):
 			self.stop_recording()
 		mouse.unhook_all()
 		keyboard.unhook_all()
-		self.main_overlay.quit()
+		self.highlights.quit()
 		print("Run end")
 
 	@property
@@ -972,21 +1009,19 @@ class Recorder(Thread):
 
 	def start_recording(self):
 		"""
-		It adds a mouse move event to the event list, displays the record icon to the main overlay,
-		clears and refreshes the main and info overlays, and then sets the mode to "Record".
+		It adds a mouse move event to the event list, clears the highlights and hides the element information, and then sets the mode to "Record".
 		"""
 		time.sleep(0.6)  # wait the recorder to be fully ready
 		x, y = win32api.GetCursorPos()
 		self.event_list = [mouse.MoveEvent(x, y, time.time())]
 		self.element_info_tooltip.hide()
-		self.main_overlay.clear_all()
-		self.main_overlay.refresh()
+		self.highlights.clear_all()
+		self.highlights.refresh()
 		self.mode = "Record"
 
 	def stop_recording(self):
 		"""
-		It cleans the event list, displays the stop icon to the main overlay,
-		clears and refreshes the main and info overlays, writes the Python script, and then sets the mode to "Stop".
+		It cleans the event list, clears the highlights, writes the Python script, and then sets the mode to "Stop".
 		:return: The name of the file that was created.
 		"""
 		if self.mode == "Record" and len(self.event_list) > 2:
@@ -1003,8 +1038,8 @@ class Recorder(Thread):
 			_clean_events(events)
 			self.last_recorded_file = _write_in_file(events, relative_coordinate_mode=self.relative_coordinate_mode)
 			return self.last_recorded_file
-		self.main_overlay.clear_all()
-		self.main_overlay.refresh()
+		self.highlights.clear_all()
+		self.highlights.refresh()
 		self.mode = "Stop"
 		return None
 
@@ -1015,24 +1050,25 @@ class Recorder(Thread):
 		"""
 		return self.last_element_event
 	
-	def playback(self, str_code='', filename=''):
+	def playback(self, str_code='', filename='', on_error=None):
 		"""
 		This function plays back a string of code or a Python file.
 		
 		:param str_code: The code to be played back
 		:param filename: The name of the file coresponding to the code to be played back
+		:param on_error: Called with the traceback if the code raises an exception, instead of printing it in the console
 		"""
 		self.mode = "Play"
-		self.main_overlay.refresh()
-		playback(str_code, filename)
+		self.highlights.refresh()
+		playback(str_code, filename, on_error)
 		self.mode = "Stop"
 	
 	def quit(self):
 		"""
-		The function clears the main and info overlays, sets the mode to 'Quit', and then joins the thread.
+		The function clears the highlights, hides the element information, sets the mode to 'Quit', and then joins the thread.
 		"""
-		self.main_overlay.clear_all()
-		self.main_overlay.refresh()
+		self.highlights.clear_all()
+		self.highlights.refresh()
 		del self.element_info_tooltip
 		self.mode = 'Quit'
 		self.join()
