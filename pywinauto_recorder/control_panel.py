@@ -17,6 +17,7 @@ __all__ = ['ControlPanel', 'get_application', 'run_control_panel']
 OUTPUT_FOLDER = Path.home() / 'Pywinauto recorder'
 WEB_SITE = 'https://pywinauto-recorder.readthedocs.io'
 COPY_FEEDBACK_DURATION = 2.0
+IDLE_OPACITY = 0.35
 
 HELP_TEXT = """<h3>Pywinauto recorder {version}</h3>
 <table cellspacing="4">
@@ -123,7 +124,7 @@ class ControlPanel(QWidget):
 		self.btn_quit.setText('✕')
 
 		# Ignored horizontally so that the width of the panel doesn't follow the length of the status text
-		self.status = QLabel(alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+		self.status = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
 		self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 		status_layout = QHBoxLayout(status_bar)
 		status_layout.setContentsMargins(6, 3, 8, 3)
@@ -132,10 +133,13 @@ class ControlPanel(QWidget):
 		status_dot.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
 		status_layout.addWidget(status_dot)
 		status_layout.addWidget(self.status, 1)
+		# Balances the dot so that the text is centered in the status bar
+		status_layout.addSpacing(status_dot.sizeHint().width() + status_layout.spacing() - 2)
 
 		self.timer = QTimer(self, interval=self.POLL_MS, timeout=self._refresh)
 		self.timer.start()
 		self._refresh()
+		self._update_opacity()
 		self.adjustSize()
 		screen = QApplication.primaryScreen().availableGeometry()
 		self.move(screen.center().x() - self.width() // 2, screen.top() + 10)
@@ -167,6 +171,7 @@ class ControlPanel(QWidget):
 		menu.addAction('Help', self.display_help)
 		menu.addAction('Web site', lambda: QDesktopServices.openUrl(QUrl(WEB_SITE)))
 		menu.aboutToShow.connect(self._sync_menu)
+		menu.aboutToHide.connect(lambda: QTimer.singleShot(0, self._update_opacity))
 		return menu
 
 	def _sync_menu(self):
@@ -184,6 +189,17 @@ class ControlPanel(QWidget):
 
 	def mouseReleaseEvent(self, event):
 		self._drag_offset = None
+
+	def enterEvent(self, event):
+		self._update_opacity()
+
+	def leaveEvent(self, event):
+		self._update_opacity()
+
+	def _update_opacity(self):
+		"""The panel is faded so that it doesn't hide what is below it, until the mouse cursor is over it."""
+		hovered = self.underMouse() or self._drag_offset is not None or self.btn_menu.menu().isVisible()
+		self.setWindowOpacity(1.0 if hovered else IDLE_OPACITY)
 
 	def _run_in_background(self, target, *args):
 		def work():
