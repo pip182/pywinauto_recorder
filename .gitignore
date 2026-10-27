@@ -140,3 +140,8 @@ recorded *
 /Tutorials/Tutorial_01/result/
 /Tutorials/Tutorial_02/result/
 /pywinauto_recorder/result/
+
+# Build artifacts: publish these as GitHub Release assets, not commits
+*.zip
+*.msi
+*.7z
