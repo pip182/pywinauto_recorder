@@ -8,7 +8,8 @@ from pathlib import Path
 import pyperclip
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices, QIcon
-from PyQt6.QtWidgets import QApplication, QFileDialog, QHBoxLayout, QLabel, QMenu, QMessageBox, QToolButton, \
+from PyQt6.QtWidgets import QApplication, QFileDialog, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QMenu, \
+	QMessageBox, QToolButton, \
 	QSizePolicy, QVBoxLayout, QWidget
 from . import __version__
 
@@ -88,17 +89,24 @@ class ControlPanel(QWidget):
 		self.setWindowTitle('Pywinauto recorder')
 		self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 		self.setStyleSheet(STYLE_SHEET)
-		panel = QWidget(self)
+		# Faded with an effect rather than the window opacity, which Wayland doesn't support
+		body = QWidget(self)
+		self.opacity_effect = QGraphicsOpacityEffect(body)
+		body.setGraphicsEffect(self.opacity_effect)
+		panel = QWidget(body)
 		panel.setObjectName('panel')
 		# The status bar is a separate element docked under the button bar
-		self.status_bar = status_bar = QWidget(self)
+		self.status_bar = status_bar = QWidget(body)
 		status_bar.setObjectName('status_bar')
 		status_bar.setProperty('state', 'idle')
 		outer = QVBoxLayout(self)
 		outer.setContentsMargins(0, 0, 0, 0)
-		outer.setSpacing(0)
-		outer.addWidget(panel)
-		outer.addWidget(status_bar)
+		outer.addWidget(body)
+		body_layout = QVBoxLayout(body)
+		body_layout.setContentsMargins(0, 0, 0, 0)
+		body_layout.setSpacing(0)
+		body_layout.addWidget(panel)
+		body_layout.addWidget(status_bar)
 		bar = QHBoxLayout(panel)
 		bar.setContentsMargins(4, 3, 4, 3)
 		bar.setSpacing(2)
@@ -181,7 +189,9 @@ class ControlPanel(QWidget):
 
 	def mousePressEvent(self, event):
 		if event.button() == Qt.MouseButton.LeftButton:
-			self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+			# The window manager moves the window (required on Wayland, where a window can't move itself)
+			if not self.windowHandle().startSystemMove():
+				self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
 	def mouseMoveEvent(self, event):
 		if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
@@ -199,7 +209,7 @@ class ControlPanel(QWidget):
 	def _update_opacity(self):
 		"""The panel is faded so that it doesn't hide what is below it, until the mouse cursor is over it."""
 		hovered = self.underMouse() or self._drag_offset is not None or self.btn_menu.menu().isVisible()
-		self.setWindowOpacity(1.0 if hovered else IDLE_OPACITY)
+		self.opacity_effect.setOpacity(1.0 if hovered else IDLE_OPACITY)
 
 	def _run_in_background(self, target, *args):
 		def work():
