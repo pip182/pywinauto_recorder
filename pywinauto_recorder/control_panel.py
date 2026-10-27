@@ -31,8 +31,22 @@ drag and drop it on pywinauto_recorder.exe or run <i>python.exe recorded_file.py
 <p><a href="{web_site}">{web_site}</a></p>"""
 
 STYLE_SHEET = """
-#panel { background: #2b2b2b; border: 1px solid #505050; border-radius: 6px; }
+#panel { background: #2b2b2b; border: 1px solid #505050; border-bottom: none;
+         border-top-left-radius: 6px; border-top-right-radius: 6px; }
 QLabel { color: #a0a0a0; font: 8pt "Segoe UI"; }
+#status_bar { background: #1e2a33; border: 1px solid #34495a; border-left: 3px solid #4aa3f0;
+              border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
+#status_bar QLabel { color: #b8cfe0; font: 8pt "Segoe UI Semibold"; letter-spacing: 0.3px; }
+#status_bar QLabel#status_dot { color: #4aa3f0; font: 7pt "Segoe UI"; }
+#status_bar[state="record"] { background: #33201f; border-color: #5a3432; border-left-color: #e04848; }
+#status_bar[state="record"] QLabel { color: #f0c4c0; }
+#status_bar[state="record"] QLabel#status_dot { color: #e04848; }
+#status_bar[state="busy"] { background: #332b1c; border-color: #5a4a2e; border-left-color: #f0c040; }
+#status_bar[state="busy"] QLabel { color: #f0e0b8; }
+#status_bar[state="busy"] QLabel#status_dot { color: #f0c040; }
+#status_bar[state="copied"] { background: #1d3324; border-color: #2f5a3c; border-left-color: #50c878; }
+#status_bar[state="copied"] QLabel { color: #c0f0cc; }
+#status_bar[state="copied"] QLabel#status_dot { color: #50c878; }
 QLabel#grip { font: 12pt "Segoe UI"; padding: 0 2px; }
 QToolButton { color: #f0f0f0; background: transparent; border: none; border-radius: 4px;
               padding: 4px 8px; font: 10pt "Segoe UI"; }
@@ -75,15 +89,18 @@ class ControlPanel(QWidget):
 		self.setStyleSheet(STYLE_SHEET)
 		panel = QWidget(self)
 		panel.setObjectName('panel')
+		# The status bar is a separate element docked under the button bar
+		self.status_bar = status_bar = QWidget(self)
+		status_bar.setObjectName('status_bar')
+		status_bar.setProperty('state', 'idle')
 		outer = QVBoxLayout(self)
 		outer.setContentsMargins(0, 0, 0, 0)
+		outer.setSpacing(0)
 		outer.addWidget(panel)
-		layout = QVBoxLayout(panel)
-		layout.setContentsMargins(4, 2, 4, 2)
-		layout.setSpacing(0)
-		bar = QHBoxLayout()
+		outer.addWidget(status_bar)
+		bar = QHBoxLayout(panel)
+		bar.setContentsMargins(4, 3, 4, 3)
 		bar.setSpacing(2)
-		layout.addLayout(bar)
 
 		grip = QLabel('⠇', objectName='grip', toolTip='Drag to move')
 		grip.setCursor(Qt.CursorShape.SizeAllCursor)
@@ -106,9 +123,15 @@ class ControlPanel(QWidget):
 		self.btn_quit.setText('✕')
 
 		# Ignored horizontally so that the width of the panel doesn't follow the length of the status text
-		self.status = QLabel()
+		self.status = QLabel(alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 		self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-		layout.addWidget(self.status)
+		status_layout = QHBoxLayout(status_bar)
+		status_layout.setContentsMargins(6, 3, 8, 3)
+		status_layout.setSpacing(5)
+		status_dot = QLabel('\u25cf', objectName='status_dot')
+		status_dot.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+		status_layout.addWidget(status_dot)
+		status_layout.addWidget(self.status, 1)
 
 		self.timer = QTimer(self, interval=self.POLL_MS, timeout=self._refresh)
 		self.timer.start()
@@ -238,19 +261,20 @@ class ControlPanel(QWidget):
 		self.recorder.quit()
 		QApplication.quit()
 
-	def _status_text(self, mode):
+	def _status(self, mode):
+		""":return: The state of the status bar (for its style) and its text"""
 		if self._busy and mode != 'Record':
-			return 'Please wait...'
+			return 'busy', 'Please wait...'
 		last_copy_time = getattr(self.recorder, 'last_copy_time', None)
 		if last_copy_time and time.time() - last_copy_time < COPY_FEEDBACK_DURATION:
-			return 'Code copied to clipboard'
+			return 'copied', 'Code copied to clipboard'
 		if mode == 'Record':
-			return 'Recording...   CTRL+ALT+R to stop'
+			return 'record', 'Recording...   CTRL+ALT+R to stop'
 		if mode == 'Initializing':
-			return 'Starting...'
+			return 'busy', 'Starting...'
 		if self.last_recorded_file:
-			return 'Last: ' + self.last_recorded_file.name
-		return 'Ready'
+			return 'idle', 'Last: ' + self.last_recorded_file.name
+		return 'idle', 'Ready'
 
 	def _refresh(self):
 		"""Reflects the recorder state, also changed by keyboard shortcuts, in the panel."""
@@ -272,7 +296,10 @@ class ControlPanel(QWidget):
 		self.btn_smart.setChecked(self.recorder.smart_mode)
 		self.btn_menu.setEnabled(ready and mode != 'Record')
 		self.btn_quit.setEnabled(not self._busy)
-		text = self._status_text(mode)
+		state, text = self._status(mode)
+		if self.status_bar.property('state') != state:
+			self.status_bar.setProperty('state', state)
+			self.setStyleSheet(STYLE_SHEET)  # re-applied so that the [state=...] selectors are evaluated again
 		self.status.setText(self.status.fontMetrics().elidedText(text, Qt.TextElideMode.ElideMiddle, self.status.width()))
 		self.status.setToolTip(text)
 		if self._hidden_for_replay and not self._busy and mode != 'Play':
