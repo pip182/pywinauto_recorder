@@ -46,7 +46,7 @@ setup(
     description='Records/Replays GUI actions',
     long_description=long_description,
     long_description_content_type="text/x-rst",
-    install_requires=['pywinauto', 'keyboard', 'mouse', 'overlay_arrows_and_more', 'enum34', 'pyperclip', 'cachetools', 'thefuzz', 'Pillow'],
+    install_requires=['pywinauto', 'keyboard', 'mouse', 'overlay_arrows_and_more', 'enum34', 'pyperclip', 'PyQt6', 'cachetools', 'thefuzz', 'Pillow'],
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
@@ -63,5 +63,5 @@ setup(
         'Topic :: Software Development :: Quality Assurance',
     ],
     include_package_data=True,
-    package_data={'': ['Icons/*.ico']},
+    package_data={'': ['Icons/IconPyRec.ico']},
 )

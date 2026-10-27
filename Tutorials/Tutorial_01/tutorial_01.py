@@ -124,7 +124,7 @@ if __name__ == '__main__':
 	speech = """
 		When you run Pywinauto Recorder it starts with this window.
 		It contains useful information.
-		All actions can be triggered by a keyboard shortcut or by clicking in the tray menu.
+		All actions can be triggered by a keyboard shortcut or by clicking in the control panel.
 		This window is closed my moving the mouse outside.
 	"""
 	brian.say(speech, wait_until_the_end_of_the_sentence=True)
@@ -217,7 +217,7 @@ if __name__ == '__main__':
 	#######################################
 	brian.say("I press 'alt' 'control' 'r' to stop recording.")
 	send_keys("{VK_CONTROL down}{VK_MENU down}r{VK_MENU up}{VK_CONTROL up}")
-	brian.say("And click on Start playing in the tray menu.")
+	brian.say("And click on Replay in the control panel.")
 	time.sleep(1.5)
 	send_keys("{VK_LWIN}")
 	time.sleep(1.5)

@@ -24,15 +24,16 @@ Pywinauto_recorder for Windows
 Usage
 -----
 - Double click on "pywinauto_recorder.exe_" or run "python.exe pywinauto_recorder.py_" to start the recorder.
-- The recorder is started in display information mode, a tray  icon is added in the right-side of the Windows Taskbar.
+- The recorder is started in display information mode and a small floating control panel is displayed at the top of the screen. Drag it anywhere to move it.
 - Press CTRL+SHIFT+f to copy the code that finds the element colored green or orange to the clipboard.
-- Press CTRL+ALT+r to switch to "Record" mode.
+- Click on "Record" in the control panel or press CTRL+ALT+r to switch to "Record" mode.
 - If the element below the mouse cursor can be uniquely identified, it will turn green or orange.
 - You can then click or perform another action on the user interface and it will be recorded in the generated Python script.
-- Repeat this process performing a few actions on the user interface and when you're done press CTRL+ALT+r to end recording.
+- Repeat this process performing a few actions on the user interface and when you're done click on "Stop" or press CTRL+ALT+r to end recording. Clicks on the control panel are never recorded.
 - The generated Python script is saved in the "Pywinauto recorder" folder in your home folder and copied in the clipboard.
-- Click on "Quit" in the tray menu.
-- To replay a Python script, you can drag and drop it to "pywinauto_recorder.exe_"
+- Click on "Replay" to replay the last recorded script, or use "Replay clipboard" / "Replay file..." in the ⋯ menu.
+- Click on ✕ to quit.
+- To replay a Python script, you can also drag and drop it to "pywinauto_recorder.exe_"
 
 .. raw:: html
 
@@ -45,13 +46,18 @@ Usage
 .. _form: https://docs.google.com/forms/d/e/1FAIpQLSdvxXJCYfoFUaTVHCDzGxkMbc_8qq68pTb_7hPbaPUDyYlOeQ/viewform
 
 
-Icons
------
-Some transparent icons are displayed at the top left of the screen:
- - an icon corresponds to Record/Stop mode. Press CTRL+ALT+r to switch.
- - a magnifying glass icon corresponds to Display information mode.
- - a bulb icon corresponds to Smart mode. Press CTRL+ALT+S to activate it.
- - another icon displays a green bar at each iteration of the loop. It allows you to see how fast the loop is running.
+Control panel
+-------------
+The floating control panel shows the state of the recorder and gives access to its core functions:
+ - ● Record / ■ Stop: starts or stops recording (CTRL+ALT+r).
+ - ▶ Replay: replays the last recorded script, or the clipboard if nothing was recorded yet. The panel is hidden while replaying.
+ - ⓘ Info: displays or hides element information (CTRL+SHIFT+d).
+ - ★ Smart: switches Smart mode on or off (CTRL+ALT+s).
+ - ⋯: replay the clipboard or a file, copy the last script, open the output folder, recording options and help.
+ - ✕: quits Pywinauto recorder.
+
+The status line below the buttons shows what the recorder is doing, the last recorded file,
+and confirms when CTRL+SHIFT+f copied code to the clipboard.
 
 More explanations
 ^^^^^^^^^^^^^^^^^
