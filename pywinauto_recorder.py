@@ -2,7 +2,10 @@
 
 from ctypes import wintypes, windll, Structure, POINTER, pointer, WinError
 import argparse
+from multiprocessing import freeze_support
 from os.path import isfile as os_path_isfile
+from pathlib import Path
+import sys
 from sys import exit as sys_exit
 from pywinauto_recorder.recorder import Recorder
 from pywinauto_recorder.player import _show_console_window
@@ -30,6 +33,15 @@ def get_AC_line_satus():
 
 
 if __name__ == '__main__':
+    # In the compiled exe, the element observer process starts the exe again: run only the process task
+    freeze_support()
+    if sys.stdout is None or sys.stderr is None:
+        # The compiled exe has no console: what the recorder prints goes to a log file (the player flushes stdout)
+        log_dir = Path.home() / 'Pywinauto recorder'
+        log_dir.mkdir(exist_ok=True)
+        log_file = open(log_dir / 'pywinauto_recorder.log', 'w', encoding='utf-8', buffering=1)
+        sys.stdout = sys.stdout or log_file
+        sys.stderr = sys.stderr or log_file
     _show_console_window(6)
     parser = argparse.ArgumentParser()
     parser.add_argument(

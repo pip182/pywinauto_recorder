@@ -16,6 +16,10 @@ Use the project venv: `.venv\Scripts\python.exe` (Python 3.10, PyQt6 6.12, pywin
 - Unit tests (no GUI): `.venv\Scripts\python.exe -m pytest -q tests\tests.py`
 - Single test: `.venv\Scripts\python.exe -m pytest -q tests\tests.py::test_get_entry_list`
 - Lint as CI does: `flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics`
+- Build the self-contained `dist\pywinauto_recorder.exe` (PyInstaller, one file, no console): `build_exe.bat`, or
+  `.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean pywinauto_recorder.spec`. The exe has no stdout: its
+  output goes to `~/Pywinauto recorder/pywinauto_recorder.log`. Test it by replaying a script through it with
+  `QT_QPA_PLATFORM=offscreen` (a replay runs any `.py` inside the exe).
 - Preview the panel on Linux/macOS with a fake recorder: `python3 preview_panel.py`
 
 `tests_Notepad.py`, `tests_Paint.py` and `tests_Calculator.py` start real applications and move the real mouse and

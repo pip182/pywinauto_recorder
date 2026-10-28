@@ -4,6 +4,7 @@ All these functions and classes are private except the Recorder class.
 
 import sys
 import os
+import subprocess
 import traceback
 import time
 import win32api
@@ -1303,10 +1304,12 @@ class Recorder(Thread):
         keyboard.start_recording()
         win32api.keybd_event(160, 0, win32con.KEYEVENTF_EXTENDEDKEY | win32con.KEYEVENTF_KEYUP, 0)
         ev_list = keyboard.stop_recording()
-        if not ev_list and os.path.isfile(dir_path + r"\pywinauto_recorder.exe"):
+        # The one-file exe runs from a temporary folder: sys.executable is the exe itself
+        exe_path = sys.executable if getattr(sys, 'frozen', False) else dir_path + r"\pywinauto_recorder.exe"
+        if not ev_list and os.path.isfile(exe_path):
             print("Couldn't set keyboard hooks. Trying once again...\n")
             time.sleep(0.5)
-            os.system(dir_path + r"\pywinauto_recorder.exe")
+            subprocess.call([exe_path])
             sys.exit(1)
         elements = []
         previous_wrapper_path = None
