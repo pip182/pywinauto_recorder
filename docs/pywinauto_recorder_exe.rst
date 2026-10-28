@@ -52,7 +52,6 @@ The floating control panel shows the state of the recorder and gives access to i
  - ● Record / ■ Stop: starts or stops recording (CTRL+ALT+r).
  - ▶ Replay: replays the last recorded script, or the clipboard if nothing was recorded yet. The panel is hidden while replaying.
  - ⓘ Info: displays or hides element information (CTRL+SHIFT+d).
- - ★ Smart: switches Smart mode on or off (CTRL+ALT+s).
  - ⋯: replay the clipboard or a file, copy the last script, open the output folder, recording options and help.
  - ✕: quits Pywinauto recorder.
 
@@ -68,6 +67,5 @@ The main of "Pywinauto recorder" is an infinite loop where at each iteration it:
 
 .. note::  To reflect the position of the mouse cursor as closely as possible, an offset is added to the user actions recorded in the generated Python script. This offset is proportional to the size of the element and relative to the center of the element.
 
-If the path of the element under the mouse cursor is not ambiguous, the region of the element is colored green. Otherwise two strategies are used to try to disambiguate the path in the following order:
- (1) All elements having the same path are ordered in a 2D array. The path of the element region under the mouse cursor is disambiguated by adding a row index and a column index so that it is colored orange. The other element regions are colored red
- (2) When Smart mode is enabled, an element whose path is unambiguous is searched on the same line on the left, if found its region is colored blue and the element under the mouse cursor is colored orange.
+If the path of the element under the mouse cursor is not ambiguous, the region of the element is colored green. Otherwise all elements having the same path are ordered in a 2D array: the path of the element under the mouse cursor is disambiguated by adding a row index and a column index, and it is colored orange. The other element regions are colored red.
+The recording also gives, for such an element, the unique element on its left on the same row (``row_label``, e.g. the label of a field), which the player can use instead of the row index: ``#[row label path,column]``.

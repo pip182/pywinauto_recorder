@@ -58,11 +58,11 @@ A small floating control panel appears at the top of the screen:
 
 - **● Record** starts / stops recording. The element under the cursor is outlined: green when it is identified
   uniquely, red when several elements have the same path. The status bar confirms each recorded click or key, and
-  warns when a click is missed.
+  warns when a click is missed. An element among identical ones (e.g. a grid cell) is recorded by its row and column,
+  and the JSON file also gives the label of its row (``row_label``), so that a script can find the row again even if
+  rows were added or sorted.
 - **▶ Replay** replays the last recording. While recording, it becomes **✎ Note**, to add a note to the recording.
 - **ⓘ Info** shows the path and the properties of the element under the cursor.
-- **★ Smart** identifies an element among identical ones (e.g. a grid cell) by its position relative to a unique
-  element on its left, such as the label of its row, instead of by its row and column.
 - **⋯** replays the clipboard or a file, edits recordings, opens the output folder and sets the recording options.
 
 Keyboard shortcuts:
@@ -70,7 +70,6 @@ Keyboard shortcuts:
 =============  ====================================================
 CTRL+ALT+R     Start / stop recording
 CTRL+ALT+N     Add a note while recording
-CTRL+ALT+S     Smart mode on / off
 CTRL+SHIFT+D   Display / hide element information
 CTRL+SHIFT+F   Copy the code finding the element under the cursor
 =============  ====================================================

@@ -8,7 +8,8 @@ that writes the automation script. Windows only (except `preview_panel.py`).
 
 ## Commands
 
-Use the project venv: `.venv\Scripts\python.exe` (Python 3.12, PyQt6 6.11, pywinauto 0.6.9).
+Use the project venv: `.venv\Scripts\python.exe` (Python 3.10, PyQt6 6.12, pywinauto 0.6.9; versions pinned in
+`requirements.txt`).
 
 - Run the recorder (control panel): `.venv\Scripts\python.exe pywinauto_recorder.py`
 - Replay a recording or script: `.venv\Scripts\python.exe pywinauto_recorder.py "<file.json|file.py>"`
@@ -31,16 +32,17 @@ Entry point `pywinauto_recorder.py` creates a `Recorder` and runs the PyQt6 `Con
 
 **UIPath**: elements are addressed by `Name||ControlType` entries joined by `->` from the top-level window
 (`core.path_separator`, `core.type_separator`). A last entry may end with `#[row,col]` (position among elements with
-the same path) or `#[reference path,col]` (Smart mode: relative to a unique element on its left), and `%(dx,dy)` for a
+the same path) or `#[reference path,col]` (the row of a unique element; only the player handles it), and `%(dx,dy)` for a
 click offset. `core.find_elements` resolves a path; it walks the path level by level (`find_children_along_path`) and
 enumerates windows with `EnumWindows` because full UIA descendant searches are very slow on some apps. pywinauto's
 `title=` matches `rich_text` (an edit's content), not the UIA Name, so names are filtered with `core.filter_by_name`.
 
 **Recorder** (`recorder.py`, a `Thread`) — several concurrent parts:
-- The run loop identifies the element under the cursor every ~100 ms, tries the strategies unique path → array_2D →
-  array_1D (Smart), fills `Highlights` and, while recording, appends `ElementEvent`s to `event_list`.
+- The run loop identifies the element under the cursor every ~100 ms, tries the strategies unique path → array_2D,
+  fills `Highlights` and, while recording, appends `ElementEvent`s to `event_list`. Smart mode (array_1D) was removed:
+  for an array_2D element, the details thread writes `row_label` (`_find_row_label`) to the JSON instead.
 - Global hooks from the `keyboard` and `mouse` libraries append raw events to `event_list` and handle the shortcuts
-  (CTRL+ALT+R record, CTRL+ALT+N note, CTRL+ALT+S smart, CTRL+SHIFT+D info, CTRL+SHIFT+F copy find code). Clicks on the
+  (CTRL+ALT+R record, CTRL+ALT+N note, CTRL+SHIFT+D info, CTRL+SHIFT+F copy find code). Clicks on the
   recorder's own windows are ignored (`_is_own_window_under_cursor`).
 - Worker threads: `_click_queue` identifies the element at a click position when the loop hasn't yet (replaces a
   placeholder `ElementEvent`), `_details_queue` reads the slow element properties written to the JSON.
@@ -65,7 +67,8 @@ editor (reorder / edit / delete steps, add notes, save) and the note dialog.
 
 ## Conventions
 
-- Indent with tabs; files use LF line endings. Docstrings use `:param x:` / `:return:`.
+- Indent with 4 spaces (no tabs, except inside strings that are data, e.g. the tutorial texts); files use LF line
+  endings. Docstrings use `:param x:` / `:return:`.
 - Prefer the Edit tool for changes: rewriting files through shell heredocs has mangled `\` line continuations and
   `\n` escapes and converted files to CRLF.
 - UIA calls into some apps (e.g. BricsCAD, which owns hundreds of hidden windows) are slow or hang; keep UIA work out

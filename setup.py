@@ -7,7 +7,7 @@ import codecs
 
 def read(rel_path):
     here = os.path.abspath(os.path.dirname(__file__))
-    with codecs.open(os.path.join(here, rel_path), 'r') as fp:
+    with codecs.open(os.path.join(here, rel_path), 'r', encoding='utf-8') as fp:
         return fp.read()
 
 
@@ -28,7 +28,7 @@ def setup_path(path=""):
 
 sys.path.append(setup_path())   # add it to the system path
 
-with open("README.rst", "r") as fh:
+with open("README.rst", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
@@ -46,7 +46,7 @@ setup(
     description='Records/Replays GUI actions',
     long_description=long_description,
     long_description_content_type="text/x-rst",
-    install_requires=['pywinauto', 'keyboard', 'mouse', 'enum34', 'pyperclip', 'PyQt6', 'cachetools', 'thefuzz', 'Pillow'],
+    install_requires=['pywinauto', 'keyboard', 'mouse', 'pyperclip', 'PyQt6', 'qtawesome', 'cachetools', 'Pillow'],
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Environment :: Console',

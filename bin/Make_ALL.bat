@@ -10,7 +10,7 @@ REM COMPILE EXE
 set PYTHON_EXE=%homedrive%%homepath%\AppData\Local\Programs\Python\Python310\python.exe
 set CMD_ICON=--windows-icon-from-ico=..\pywinauto_recorder\Icons\IconPyRec.ico
 set CMD_INFO=--windows-file-version=%version% --windows-product-version=%version% --windows-product-name="Pywinauto Recorder" --windows-company-name="Pywinauto Recorder"
-%PYTHON_EXE% -m nuitka --standalone --mingw64 --enable-plugin=pyqt6 %CMD_ICON% %CMD_INFO% ..\pywinauto_recorder.py --nofollow-import-to=*.ocr_wrapper.py
+%PYTHON_EXE% -m nuitka --standalone --mingw64 --enable-plugin=pyqt6 %CMD_ICON% %CMD_INFO% ..\pywinauto_recorder.py
 REM %PYTHON_EXE% -m nuitka --standalone --mingw64 ..\clear_comtypes_cache.py --show-scons
 
 
