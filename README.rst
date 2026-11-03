@@ -39,7 +39,7 @@ that writes a robust automation script from it.
 
 Installation
 ============
-Windows only. With Python 3.8 or later:
+Windows only. With Python 3.10 or later:
 
 .. code-block:: bat
 

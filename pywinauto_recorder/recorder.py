@@ -22,7 +22,7 @@ import ast
 from datetime import datetime
 import win32process
 import win32gui
-from pywinauto.uia_defines import get_elem_interface
+from pywinauto.windows.uia_defines import get_elem_interface
 from . import __version__
 from .core import path_separator, type_separator, Strategy, is_int, \
                     get_wrapper_path_and_window, get_entry_list, get_entry, get_sorted_region, \
@@ -174,7 +174,7 @@ def _get_element_identity(element_info):
     """:return: The properties identifying an element (UIAElementInfo)"""
     return {
         'name': element_info.name, 'control_type': element_info.control_type,
-        'automation_id': element_info.automation_id, 'class_name': element_info.class_name}
+        'automation_id': element_info.auto_id, 'class_name': element_info.class_name}
 
 
 def _get_element_details(wrapper, strategy, path):

@@ -1,4 +1,4 @@
-pywinauto==0.6.9
+pywinauto==1.0.0b1
 keyboard==0.13.5
 mouse==0.7.1
 pyperclip==1.11.0

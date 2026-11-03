@@ -8,7 +8,7 @@ that writes the automation script. Windows only (except `preview_panel.py`).
 
 ## Commands
 
-Use the project venv: `.venv\Scripts\python.exe` (Python 3.10, PyQt6 6.12, pywinauto 0.6.9; versions pinned in
+Use the project venv: `.venv\Scripts\python.exe` (Python 3.10, PyQt6 6.12, pywinauto 1.0.0b1; versions pinned in
 `requirements.txt`).
 
 - Run the recorder (control panel): `.venv\Scripts\python.exe pywinauto_recorder.py`

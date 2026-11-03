@@ -38,7 +38,7 @@ def _entry_hint(element_info):
     :return: What tells apart an element without name: its automation id (the name of the control in the code of
     WinForms and WPF applications), else its class name, else ''
     """
-    automation_id = element_info.automation_id or ''
+    automation_id = element_info.auto_id or ''
     if automation_id and not automation_id.isdigit():  # WinForms gives the window handle when there is nothing better
         return automation_id
     class_name = element_info.class_name or ''
@@ -68,8 +68,8 @@ def _short(value):
 def _element_properties(wrapper, str_name, str_type):
     """:return: The [label, value] of the properties worth knowing to write code using the element"""
     properties = []
-    if wrapper.element_info.automation_id:
-        properties.append(['automation id', wrapper.element_info.automation_id])
+    if wrapper.element_info.auto_id:
+        properties.append(['automation id', wrapper.element_info.auto_id])
     if wrapper.element_info.class_name:
         properties.append(['class name', wrapper.element_info.class_name])
     properties += [

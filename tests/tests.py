@@ -2,7 +2,7 @@ import json
 import keyboard
 import mouse
 import pytest
-from pywinauto.win32structures import RECT
+from pywinauto.windows.win32structures import RECT
 from pywinauto_recorder.core import Strategy, get_entry_list, get_entry, match_entry_list
 from pywinauto_recorder import recorder
 from pywinauto_recorder.recorder import ClickEvent, DragAndDropEvent, ElementEvent, MouseWheelEvent, NoteEvent, \

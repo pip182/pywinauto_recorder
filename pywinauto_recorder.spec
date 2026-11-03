@@ -8,7 +8,9 @@ from PyInstaller.utils.win32.versioninfo import FixedFileInfo, StringFileInfo, S
 
 root = Path(SPECPATH)
 version = re.search(r'__version__ = "(.+)"', (root / 'pywinauto_recorder' / '__init__.py').read_text()).group(1)
-version_tuple = tuple(int(n) for n in (version.split('.') + ['0'] * 4)[:4])
+# The Windows file version is 4 numbers: only the release part of e.g. "1.0.0.dev0" is used
+release = re.match(r'\d+(\.\d+)*', version).group(0)
+version_tuple = tuple(int(n) for n in (release.split('.') + ['0'] * 4)[:4])
 icon_file = str(root / 'pywinauto_recorder' / 'Icons' / 'IconPyRec.ico')
 
 version_info = VSVersionInfo(

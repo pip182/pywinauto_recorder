@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 
 import re
+import traceback
 from enum import Enum
 import configparser
 import ast
 from pywinauto import Desktop as PywinautoDesktop
 from pywinauto.controls.uiawrapper import UIAWrapper
-from pywinauto.uia_element_info import UIAElementInfo
+from pywinauto.windows.uia_element_info import UIAElementInfo
 from pywinauto import findwindows
-from pywinauto.uia_defines import IUIA
+from pywinauto.windows.uia_defines import IUIA
 from comtypes import COMError
 import win32gui
 
@@ -373,7 +374,7 @@ def find_window_candidates(root_entry, handle=None):
         control_type = None
     if handle is not None:
         element_infos = [w.element_info for w in desktop.windows(
-            control_type=control_type, visible_only=False, enabled_only=False, active_only=False, handle=handle)]
+            control_type=control_type, active_only=False, handle=handle)]
     else:
         # Not desktop.windows(): UI Automation would query the hidden windows too, which can't be used, and an
         # application owning hundreds of them (e.g. bricscad_bsb.exe) makes it take seconds.
@@ -488,7 +489,7 @@ def find_children_along_path(window, entry_list):
         children = []
         for parent in parents:
             # The name is a UI Automation condition unless it is empty or a regular expression, filtered below
-            children +=parent.children(control_type=control_type, title=None if regex else name)
+            children += parent.children(control_type=control_type, name=None if regex else name)
         parents = filter_by_name(children, name, regex=regex)
         if not parents:
             break
@@ -521,12 +522,12 @@ def find_elements(full_element_path=None, window_handle=None):
     title, control_type, _, _ = get_entry(entry_list[-1])
     for window in window_candidates:
         if entry_list[-1] == '*':
-            eis = findwindows.find_elements(backend="uia", parent=window, top_level_only=False)
+            eis = findwindows.find_elements(backend="uia", parent=window, top_level_only=False, visible=True)
             candidates += filter_with_match_entry_list(window.element_info, eis, entry_list)
         elif len(entry_list) > 1 and '*' not in entry_list:
             candidates += find_children_along_path(window.element_info, entry_list[1:])
         else:
-            eis = findwindows.find_elements(control_type=control_type, backend="uia",
+            eis = findwindows.find_elements(control_type=control_type, backend="uia", visible=True,
                                             parent=None if len(entry_list)==1 else window, top_level_only=len(entry_list)==1)
             eis = filter_by_name(eis, title, regex=is_regex_entry(entry_list[-1]))
             candidates += filter_with_match_entry_list(window.element_info, eis, entry_list)
